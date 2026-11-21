@@ -25,6 +25,7 @@ st.set_page_config(page_title="URBIS GIS", page_icon="🏙️", layout="wide")
 import db  # noqa: E402
 import estimare  # noqa: E402
 import harta_inaltimi  # noqa: E402
+import cautare_web  # noqa: E402
 import osm  # noqa: E402
 import pagini_rapoarte as PR  # noqa: E402
 import raport  # noqa: E402
@@ -485,12 +486,17 @@ def page_interogare():
                           .to_json().encode("utf-8"), "interogare_urbis.geojson", "application/geo+json")
 
 
+# ================================================================ M5 · AGENT WEB
+def page_cautare_web():
+    cautare_web.render(header)
+
+
 # ================================================================ M5 · ASISTENT
 def page_asistent():
     header("Asistent GIS-IA", "M5", "Răspunde din baza de date URBIS, documentele încărcate și documentația "
                                     "tehnică a fluxului FLAIR-HUB2BF, cu sursa citată")
     with st.expander("⚙️ Model de limbaj și protecția datelor", expanded=False):
-        opts = {"claude": "Claude (Anthropic, prin API)", "ollama": "Model local (Ollama) – datele nu părăsesc calculatorul"}
+        opts = {"claude": "Claude (Anthropic, prin API)", "gemini": "Gemini (Google, cheie gratuită)", "ollama": "Model local (Ollama) – datele nu părăsesc calculatorul"}
         cur = st.session_state.get("llm", rag.llm_provider())
         st.session_state.llm = st.radio("Model", list(opts), format_func=opts.get,
                                         index=list(opts).index(cur) if cur in opts else 0, horizontal=True)
@@ -506,7 +512,8 @@ def page_asistent():
                    f"bazei de date (fără date despre persoane). Documente indexate: "
                    f"{int((nd['date_personale'] == 0).sum()) if len(nd) else 0}; excluse pentru că au date personale: "
                    f"{int((nd['date_personale'] == 1).sum()) if len(nd) else 0}.")
-    if st.session_state.get("llm", rag.llm_provider()) == "claude" and not rag.api_key():
+    _p = st.session_state.get("llm", rag.llm_provider())
+    if (_p == "claude" and not rag.api_key()) or (_p == "gemini" and not rag.gemini_key()):
         st.warning("Asistentul nu are cheie API: răspunsurile se limitează la fragmentele găsite. "
                    "Adaug-o în cheie_api.txt (local) sau în Secrets (Streamlit Cloud), sau alege un model local.")
     if "messages" not in st.session_state:
@@ -1057,7 +1064,9 @@ pages = {
                    st.Page(harta_inaltimi.render, title="Harta înălțimilor (OSM) · M3", icon="🏢",
                            url_path="inaltimi"),
                    st.Page(page_interogare, title="Interogare spațială · M4", icon="🔎", url_path="interogare"),
-                   st.Page(page_asistent, title="Asistent GIS-IA · M5", icon="🤖", url_path="asistent")],
+                   st.Page(page_asistent, title="Asistent GIS-IA · M5", icon="🤖", url_path="asistent"),
+                   st.Page(page_cautare_web, title="Agent documentare web · M5", icon="🌐",
+                           url_path="cautare-web")],
     "Analizează": [st.Page(page_indicatori, title="Indicatori densificare · M6", icon="📈", url_path="indicatori"),
                    st.Page(page_rapoarte, title="Rapoarte PDF · M6", icon="📄", url_path="rapoarte"),
                    st.Page(page_neconcordante, title="Neconcordanțe cadastrale · M6", icon="⚠️",
