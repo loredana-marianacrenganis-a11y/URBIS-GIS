@@ -1,0 +1,14 @@
+streamlit>=1.48
+streamlit-folium>=0.22
+folium>=0.17
+geopandas>=1.0
+pyogrio
+fastembed>=0.7
+numpy
+matplotlib
+fpdf2>=2.7
+anthropic
+requests
+openpyxl
+scikit-learn
+pypdf
