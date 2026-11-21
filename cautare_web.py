@@ -1,0 +1,149 @@
+# cautare_web.py - agent de căutare pe web pentru URBIS GIS
+#
+# Caută, pentru o zonă și o temă (de ex. „construcții noi Iași Copou”):
+#   - articole științifice în OpenAlex (gratuit, fără cheie; >250 milioane de lucrări);
+#   - știri de presă în GDELT (gratuit, fără cheie; presă online, inclusiv românească).
+# Apoi modelul de limbaj ales în platformă (Gemini gratuit, Claude sau Ollama) face o
+# sinteză în română, cu trimitere la fiecare sursă [1], [2] ... Fără model, se afișează lista.
+
+import re
+from datetime import datetime
+
+import requests
+import streamlit as st
+
+import rag_iasi as rag
+
+UA = {"User-Agent": "URBIS-GIS/1.0 (TUIASI; cercetare)"}
+
+
+def _abstract(inv):
+    """OpenAlex dă rezumatul ca index inversat {cuvânt: [poziții]}."""
+    if not inv:
+        return ""
+    pos = sorted((p, w) for w, ps in inv.items() for p in ps)
+    return " ".join(w for _, w in pos)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def articole(query, n=8, de_la=2015):
+    r = requests.get("https://api.openalex.org/works", headers=UA, timeout=30, params={
+        "search": query, "per-page": n, "sort": "relevance_score:desc",
+        "filter": f"from_publication_date:{de_la}-01-01",
+        "select": "title,publication_year,doi,id,primary_location,authorships,abstract_inverted_index"})
+    r.raise_for_status()
+    out = []
+    for w in r.json().get("results", []):
+        src = ((w.get("primary_location") or {}).get("source") or {}).get("display_name") or ""
+        aut = ", ".join(a["author"]["display_name"] for a in (w.get("authorships") or [])[:3])
+        out.append({"tip": "articol", "titlu": w.get("title") or "", "an": w.get("publication_year"),
+                    "sursa": src, "autori": aut, "url": w.get("doi") or w.get("id"),
+                    "text": _abstract(w.get("abstract_inverted_index"))[:900]})
+    return out
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def presa(query, n=15, luni=12, limba="romanian"):
+    q = query if " " not in query else f"({query})" if " OR " in query else query
+    params = {"query": q + (f" sourcelang:{limba}" if limba else ""), "mode": "ArtList",
+              "format": "json", "maxrecords": n, "sort": "DateDesc", "timespan": f"{luni * 30}d"}
+    r = requests.get("https://api.gdeltproject.org/api/v2/doc/doc", headers=UA, timeout=30, params=params)
+    r.raise_for_status()
+    try:
+        arts = r.json().get("articles", [])
+    except ValueError:  # GDELT răspunde cu text simplu la interogări prea scurte
+        return []
+    out = []
+    for a in arts:
+        d = a.get("seendate", "")[:8]
+        out.append({"tip": "presă", "titlu": a.get("title", ""), "an": d[:4],
+                    "data": f"{d[6:8]}.{d[4:6]}.{d[:4]}" if len(d) == 8 else "",
+                    "sursa": a.get("domain", ""), "autori": "", "url": a.get("url", ""), "text": ""})
+    return out
+
+
+def _llm(prompt, provider, ollama_model=None):
+    if provider == "gemini" and rag.gemini_key():
+        return rag._ask_gemini(prompt)
+    if provider == "ollama":
+        return rag._ask_ollama(prompt, ollama_model or "llama3.1")
+    if provider == "claude" and rag.api_key():
+        import anthropic
+        c = anthropic.Anthropic(api_key=rag.api_key())
+        m = c.messages.create(model="claude-haiku-5-5", max_tokens=900,
+                              messages=[{"role": "user", "content": prompt}])
+        return m.content[0].text
+    return None
+
+
+def _cuvinte_en(intrebare, provider, ollama_model):
+    """Literatura științifică e mai ales în engleză: cere modelului 3-6 cuvinte-cheie în engleză."""
+    try:
+        t = _llm("Give 3-6 English search keywords (no quotes, space separated, nothing else) for "
+                 f"finding scientific papers about: {intrebare}", provider, ollama_model)
+        return re.sub(r"[\"'\n]", " ", t).strip()[:120] if t else None
+    except Exception:
+        return None
+
+
+def sinteza(intrebare, rezultate, provider, ollama_model=None):
+    lista = "\n".join(f"[{i}] ({r['tip']}, {r.get('data') or r['an']}, {r['sursa']}) {r['titlu']}. {r['text']}"
+                      for i, r in enumerate(rezultate, 1))
+    prompt = ("Ești agentul de documentare al platformei URBIS GIS (cadastru și densificare urbană, Iași). "
+              "Pe baza listei de surse de mai jos, scrie în română o sinteză scurtă (maximum 12 rânduri) "
+              f"care răspunde la: „{intrebare}”. Separă ce spun articolele științifice de ce spune presa. "
+              "După fiecare afirmație pune numărul sursei, de ex. [2]. Folosește doar informațiile din listă; "
+              "dacă sursele nu răspund la întrebare, spune asta.\n\nSurse:\n" + lista)
+    return _llm(prompt, provider, ollama_model)
+
+
+def render(header):
+    header("Agent de documentare web", "M5", "Caută articole științifice (OpenAlex) și presă (GDELT) despre ce "
+                                              "s-a construit într-o zonă și face o sinteză cu sursele citate")
+    c1, c2 = st.columns([3, 1])
+    q = c1.text_input("Ce cauți?", "construcții noi și densificare urbană în Iași")
+    zona = c2.text_input("Zonă (opțional)", "Iași")
+    c3, c4, c5 = st.columns(3)
+    surse = c3.multiselect("Surse", ["Articole științifice", "Presă"], ["Articole științifice", "Presă"])
+    luni = c4.slider("Presă: ultimele luni", 1, 36, 12)
+    de_la = c5.number_input("Articole: din anul", 2000, datetime.now().year, 2015)
+    provider = st.session_state.get("llm", rag.llm_provider())
+    if not st.button("🔎 Caută", type="primary"):
+        st.caption("Sursele sunt publice și gratuite. Întrebarea nu conține date din baza firmei; "
+                   "sinteza folosește modelul de limbaj ales la Asistent GIS-IA.")
+        return
+    intrebare = f"{q} {zona}".strip()
+    rez, erori = [], []
+    with st.spinner("Caut în surse publice…"):
+        if "Articole științifice" in surse:
+            en = _cuvinte_en(intrebare, provider, st.session_state.get("ollama_model")) or intrebare
+            try:
+                rez += articole(en, de_la=int(de_la))
+            except Exception as e:
+                erori.append(f"OpenAlex: {e}")
+        if "Presă" in surse:
+            try:
+                pq = " ".join(w for w in re.findall(r"\w+", intrebare) if len(w) > 3)[:100]
+                rez += presa(pq, luni=luni)
+            except Exception as e:
+                erori.append(f"GDELT: {e}")
+    for e in erori:
+        st.warning(f"O sursă nu a răspuns: {e}")
+    if not rez:
+        st.info("Nu am găsit rezultate. Încearcă alte cuvinte sau o perioadă mai lungă.")
+        return
+    try:
+        text = sinteza(intrebare, rez, provider, st.session_state.get("ollama_model"))
+    except Exception as e:
+        text, _ = None, st.warning(f"Modelul de limbaj nu a răspuns: {e}")
+    if text:
+        st.markdown("#### Sinteză")
+        st.markdown(text)
+    else:
+        st.info("Fără model de limbaj configurat se afișează doar lista surselor "
+                "(adaugă GEMINI_API_KEY pentru sinteză gratuită).")
+    st.markdown("#### Surse")
+    for i, r in enumerate(rez, 1):
+        meta = " · ".join(x for x in [r["tip"], str(r.get("data") or r["an"] or ""), r["sursa"], r["autori"]] if x)
+        st.markdown(f"**[{i}]** [{r['titlu'] or r['url']}]({r['url']})  \n<small>{meta}</small>",
+                    unsafe_allow_html=True)
