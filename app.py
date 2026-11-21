@@ -30,6 +30,7 @@ import osm  # noqa: E402
 import pagini_rapoarte as PR  # noqa: E402
 import raport  # noqa: E402
 import raport_cladire  # noqa: E402
+import swipe  # noqa: E402
 from common import (rag, read_layer, gpkg_layers, init_session, circle, area_ha,  # noqa: E402
                     zone_polygon_from_file, show_sources, NAVY)
 
@@ -489,6 +490,10 @@ def page_interogare():
 # ================================================================ M5 · AGENT WEB
 def page_cautare_web():
     cautare_web.render(header)
+
+
+def page_swipe():
+    swipe.render(header, db_version)
 
 
 # ================================================================ M5 · ASISTENT
@@ -1072,6 +1077,7 @@ pages = {
     "Explorează": [st.Page(page_harta, title="Hartă și căutare · M3", icon="🗺️", default=True),
                    st.Page(harta_inaltimi.render, title="Harta înălțimilor (OSM) · M3", icon="🏢",
                            url_path="inaltimi"),
+                   st.Page(page_swipe, title="Comparație cu swipe · M3", icon="↔️", url_path="swipe"),
                    st.Page(page_interogare, title="Interogare spațială · M4", icon="🔎", url_path="interogare"),
                    st.Page(page_asistent, title="Asistent GIS-IA · M5", icon="🤖", url_path="asistent"),
                    st.Page(page_cautare_web, title="Agent documentare web · M5", icon="🌐",

@@ -74,10 +74,12 @@ def parse_overpass(data):
     return gdf
 
 
-def _post_overpass(q):
-    """Trimite o interogare Overpass; la refuz (429/504) sau eroare reîncearcă pe serverele de rezervă."""
+def _post_overpass(q, start=0):
+    """Trimite o interogare Overpass; la refuz (429/504) sau eroare reîncearcă pe serverele de rezervă.
+    `start` alege serverul de la care se începe (bucățile paralele pornesc de pe servere diferite)."""
     erori = []
-    for incercare, url in enumerate(OVERPASS_MIRRORS * 2):
+    ordine = OVERPASS_MIRRORS[start % len(OVERPASS_MIRRORS):] + OVERPASS_MIRRORS[:start % len(OVERPASS_MIRRORS)]
+    for incercare, url in enumerate(ordine * 2):
         try:
             r = requests.post(url, data={"data": q}, headers=HEADERS, timeout=150)
             if r.status_code in (429, 502, 503, 504):
@@ -101,13 +103,22 @@ def _tiles(minx, miny, maxx, maxy, step=TILE_DEG):
 def fetch_buildings(zone_wgs84):
     """Descarcă clădirile OSM din dreptunghiul zonei și le taie la limita zonei.
     Zonele mari (de ex. tot municipiul) se descarcă pe bucăți, apoi se elimină dublurile."""
-    parts = []
-    for x0, y0, x1, y1 in _tiles(*zone_wgs84.bounds):
+    from concurrent.futures import ThreadPoolExecutor
+
+    tiles = _tiles(*zone_wgs84.bounds)
+
+    def one(i_t):
+        i, (x0, y0, x1, y1) = i_t
+        t0 = time.time()
         q = (f'[out:json][timeout:120];(way["building"]({y0},{x0},{y1},{x1});'
              f'relation["building"]({y0},{x0},{y1},{x1}););out geom;')
-        g = parse_overpass(_post_overpass(q))
-        if not g.empty:
-            parts.append(g)
+        g = parse_overpass(_post_overpass(q, start=i))
+        print(f"[osm] bucata {i + 1}/{len(tiles)}: {len(g)} cladiri in {time.time() - t0:.0f} s", flush=True)
+        return g
+
+    # câte o bucată pe fiecare server Overpass, în paralel (cel mult 3 cereri simultan)
+    with ThreadPoolExecutor(max_workers=min(3, len(tiles))) as ex:
+        parts = [g for g in ex.map(one, enumerate(tiles)) if not g.empty]
     if not parts:
         return parse_overpass({})
     gdf = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), geometry="geometry", crs=4326)
