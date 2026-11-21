@@ -1061,6 +1061,7 @@ if DEMO:
                 "Nu conține date cadastrale ale beneficiarului. Modificările nu se păstrează după repornire.")
         if _demo_state.startswith("eroare"):
             st.warning("OpenStreetMap nu a răspuns la pornire. Reîncarcă pagina peste un minut.")
+            st.caption(_demo_state[:300])
             demo_bootstrap.clear()
 
 current_role()
