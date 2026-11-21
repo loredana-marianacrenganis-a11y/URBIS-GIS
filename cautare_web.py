@@ -2,12 +2,15 @@
 #
 # Caută, pentru o zonă și o temă (de ex. „construcții noi Iași Copou”):
 #   - articole științifice în OpenAlex (gratuit, fără cheie; >250 milioane de lucrări);
-#   - știri de presă în GDELT (gratuit, fără cheie; presă online, inclusiv românească).
+#   - știri de presă în Google News (RSS public, în română), cu GDELT ca rezervă; ambele gratuite, fără cheie.
 # Apoi modelul de limbaj ales în platformă (Gemini gratuit, Claude sau Ollama) face o
 # sinteză în română, cu trimitere la fiecare sursă [1], [2] ... Fără model, se afișează lista.
 
 import re
+import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 
 import requests
 import streamlit as st
@@ -42,16 +45,19 @@ def articole(query, n=8, de_la=2015):
     return out
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def presa(query, n=15, luni=12, limba="romanian"):
-    q = query if " " not in query else f"({query})" if " OR " in query else query
-    params = {"query": q + (f" sourcelang:{limba}" if limba else ""), "mode": "ArtList",
-              "format": "json", "maxrecords": n, "sort": "DateDesc", "timespan": f"{luni * 30}d"}
-    r = requests.get("https://api.gdeltproject.org/api/v2/doc/doc", headers=UA, timeout=30, params=params)
-    r.raise_for_status()
+def _gdelt(query, n, luni):
+    params = {"query": query + " sourcelang:romanian", "mode": "ArtList", "format": "json",
+              "maxrecords": n, "sort": "DateDesc", "timespan": f"{luni * 30}d"}
+    for incercare in range(2):  # GDELT cere cel mult o cerere la 5 secunde
+        r = requests.get("https://api.gdeltproject.org/api/v2/doc/doc", headers=UA, timeout=30, params=params)
+        if r.status_code == 429 and incercare == 0:
+            time.sleep(6)
+            continue
+        r.raise_for_status()
+        break
     try:
         arts = r.json().get("articles", [])
-    except ValueError:  # GDELT răspunde cu text simplu la interogări prea scurte
+    except ValueError:  # răspuns text simplu la interogări prea scurte
         return []
     out = []
     for a in arts:
@@ -60,6 +66,41 @@ def presa(query, n=15, luni=12, limba="romanian"):
                     "data": f"{d[6:8]}.{d[4:6]}.{d[:4]}" if len(d) == 8 else "",
                     "sursa": a.get("domain", ""), "autori": "", "url": a.get("url", ""), "text": ""})
     return out
+
+
+def _gnews(query, n, luni):
+    """Google News (RSS public, în română): acoperă bine presa locală."""
+    r = requests.get("https://news.google.com/rss/search", headers={"User-Agent": "Mozilla/5.0"}, timeout=30,
+                     params={"q": f"{query} when:{luni * 30}d", "hl": "ro", "gl": "RO", "ceid": "RO:ro"})
+    r.raise_for_status()
+    out = []
+    for it in ET.fromstring(r.content).iter("item"):
+        if len(out) >= n:
+            break
+        try:
+            dt = parsedate_to_datetime(it.findtext("pubDate") or "")
+            data, an = dt.strftime("%d.%m.%Y"), str(dt.year)
+        except Exception:
+            data, an = "", ""
+        out.append({"tip": "presă", "titlu": it.findtext("title") or "", "an": an, "data": data,
+                    "sursa": it.findtext("source") or "", "autori": "", "url": it.findtext("link") or "",
+                    "text": ""})
+    return out
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def presa(query, n=15, luni=12):
+    erori = []
+    for sursa in (_gnews, _gdelt):
+        try:
+            rez = sursa(query, n, luni)
+            if rez:
+                return rez
+        except Exception as e:
+            erori.append(f"{sursa.__name__}: {e}")
+    if erori:
+        raise RuntimeError("; ".join(erori))
+    return []
 
 
 def _llm(prompt, provider, ollama_model=None):
@@ -76,14 +117,18 @@ def _llm(prompt, provider, ollama_model=None):
     return None
 
 
-def _cuvinte_en(intrebare, provider, ollama_model):
-    """Literatura științifică e mai ales în engleză: cere modelului 3-6 cuvinte-cheie în engleză."""
+def _cuvinte_en(intrebare, provider, ollama_model, zona=""):
+    """Literatura științifică e mai ales în engleză: cere modelului 3-6 cuvinte-cheie în engleză.
+    Fără model, folosește cuvinte-cheie implicite despre densificare + numele zonei."""
     try:
         t = _llm("Give 3-6 English search keywords (no quotes, space separated, nothing else) for "
                  f"finding scientific papers about: {intrebare}", provider, ollama_model)
-        return re.sub(r"[\"'\n]", " ", t).strip()[:120] if t else None
+        if t:
+            return re.sub(r"[\"'\n]", " ", t).strip()[:120]
     except Exception:
-        return None
+        pass
+    z = (zona or "").translate(str.maketrans("ăâîșşțţĂÂÎȘŞȚŢ", "aaisstt" + "AAISSTT"))
+    return f"urban densification building footprints cadastre {z}".strip()
 
 
 def sinteza(intrebare, rezultate, provider, ollama_model=None):
@@ -98,7 +143,7 @@ def sinteza(intrebare, rezultate, provider, ollama_model=None):
 
 
 def render(header):
-    header("Agent de documentare web", "M5", "Caută articole științifice (OpenAlex) și presă (GDELT) despre ce "
+    header("Agent de documentare web", "M5", "Caută articole științifice (OpenAlex) și presă (Google News, GDELT) despre ce "
                                               "s-a construit într-o zonă și face o sinteză cu sursele citate")
     c1, c2 = st.columns([3, 1])
     q = c1.text_input("Ce cauți?", "construcții noi și densificare urbană în Iași")
@@ -116,7 +161,7 @@ def render(header):
     rez, erori = [], []
     with st.spinner("Caut în surse publice…"):
         if "Articole științifice" in surse:
-            en = _cuvinte_en(intrebare, provider, st.session_state.get("ollama_model")) or intrebare
+            en = _cuvinte_en(intrebare, provider, st.session_state.get("ollama_model"), zona)
             try:
                 rez += articole(en, de_la=int(de_la))
             except Exception as e:
@@ -126,7 +171,7 @@ def render(header):
                 pq = " ".join(w for w in re.findall(r"\w+", intrebare) if len(w) > 3)[:100]
                 rez += presa(pq, luni=luni)
             except Exception as e:
-                erori.append(f"GDELT: {e}")
+                erori.append(f"Presă: {e}")
     for e in erori:
         st.warning(f"O sursă nu a răspuns: {e}")
     if not rez:
