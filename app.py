@@ -104,6 +104,13 @@ def header(title, module=None, subtitle=""):
 
 
 # ---------------------------------------------------------------- date (cache pe versiunea bazei)
+def _txt(df):
+    """Coloanele text cu valori amestecate (de ex. anul construcției: 1975 sau „1975-1980”) devin text,
+    altfel tabelul nu se poate afișa."""
+    return df.assign(**{c: df[c].map(lambda x: "" if x is None or (isinstance(x, float) and x != x) else str(x))
+                        for c in df.columns if df[c].dtype == object})
+
+
 def db_version():
     v = db.read_sql("SELECT (SELECT COUNT(*) FROM constructie) a, (SELECT COUNT(*) FROM eveniment) b, "
                     "(SELECT COALESCE(MAX(id),0) FROM constructie) c")
@@ -367,7 +374,7 @@ def fisa(cod, g, year):
         st.caption(f"Sursa nivelurilor: **{r['niv_sursa_afis']}** · sursa geometriei: {r.get('sursa') or '–'}")
     with t2:
         v, e = db.history(cod)
-        st.dataframe(v.rename(columns={"valid_de_la": "de la", "valid_pana_la": "până la"}), hide_index=True,
+        st.dataframe(_txt(v.rename(columns={"valid_de_la": "de la", "valid_pana_la": "până la"})), hide_index=True,
                      width="stretch")
         st.dataframe(e[["an", "tip", "detalii", "sursa"]], hide_index=True, width="stretch")
     with t3:
@@ -480,7 +487,7 @@ def page_interogare():
         table = pd.DataFrame(res.drop(columns=["geometry"]))[
             ["cod_constructie", "tip", "niv_afis", "niv_sursa_afis", "amprenta_m2", "an_constructie", "adresa",
              "valid_de_la", "sursa"]].rename(columns={"niv_afis": "niveluri", "niv_sursa_afis": "sursa_niveluri"})
-        st.dataframe(table, hide_index=True, width="stretch", height=280)
+        st.dataframe(_txt(table), hide_index=True, width="stretch", height=280)
         a, b = st.columns(2)
         a.download_button("⬇️ CSV", table.to_csv(index=False).encode("utf-8"), "interogare_urbis.csv", "text/csv")
         b.download_button("⬇️ GeoJSON", r4[["cod_constructie", "tip", "niv_afis", "amprenta_m2", "geometry"]]
@@ -1034,12 +1041,59 @@ _Acest proiect a fost finanțat printr-un grant al Ministerului Educației și C
 # ================================================================ VERSIUNE DEMONSTRATIVĂ (online)
 DEMO = str(os.environ.get("URBIS_DEMO") or _secret("URBIS_DEMO") or "").strip().lower() in ("1", "true", "da", "yes")
 DEMO_AREA = "Municipiul Iași (complet)"
+DEMO_START = "Centru – Copou"   # se încarcă prima; restul municipiului vine în fundal
+
+
+@st.cache_resource(show_spinner=False)
+def demo_progres():
+    """Starea încărcării în fundal (păstrată între rulările paginii)."""
+    return {"total": 0, "gata": 0, "cladiri": 0, "erori": [], "terminat": False, "lipsa": 0}
+
+
+def _demo_import_tile(bounds, sid):
+    g = osm.fetch_buildings(box(*bounds))
+    if g.empty:
+        return 0
+    g = g.rename(columns={"an": "an_constructie"})
+    g["niveluri"] = g.apply(raport._levels, axis=1)
+    g["niveluri_sursa"] = np.where(g["niveluri"].notna(), "OSM", None)
+    return db.import_buildings(g, 2024, sid, utilizator="demo", inventar=True)["acceptate"]
+
+
+def _demo_rest(tiles, sid, prog):
+    """Descarcă restul municipiului pe bucăți (câte 2 în paralel) și le importă pe rând."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    rest = list(tiles)
+    for _ in range(2):                               # a doua trecere reia bucățile cu eroare
+        esuate = []
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut = {ex.submit(osm.fetch_buildings, box(*t)): t for t in rest}
+            for f in as_completed(fut):
+                try:
+                    g = f.result()
+                    if len(g):
+                        g = g.rename(columns={"an": "an_constructie"})
+                        g["niveluri"] = g.apply(raport._levels, axis=1)
+                        g["niveluri_sursa"] = np.where(g["niveluri"].notna(), "OSM", None)
+                        prog["cladiri"] += db.import_buildings(g, 2024, sid, utilizator="demo",
+                                                               inventar=True)["acceptate"]
+                    prog["gata"] += 1
+                except Exception as e:  # serviciul OSM nu a răspuns pentru această bucată
+                    esuate.append(fut[f])
+                    prog["erori"].append(str(e)[:200])
+        rest = esuate
+        if not rest:
+            break
+    prog.update(terminat=True, lipsa=len(rest))
+    db.log("demo: inventar OSM (fundal)", "sistem", {"cladiri": prog["cladiri"], "bucati_lipsa": len(rest)})
 
 
 @st.cache_resource(show_spinner=False)
 def demo_bootstrap():
-    """În modul demo, la prima pornire încarcă automat inventarul OpenStreetMap al zonei pilot
-    (date publice, ODbL). Nu se încarcă niciun fel de date cadastrale ale beneficiarului."""
+    """În modul demo, la prima pornire încarcă automat inventarul OpenStreetMap al municipiului
+    (date publice, ODbL): întâi zona centrală, ca platforma să pornească repede, apoi restul în fundal.
+    Nu se încarcă niciun fel de date cadastrale ale beneficiarului."""
+    import threading
     if db.years():
         surse = db.read_sql("SELECT nume FROM sursa")["nume"].tolist()
         if f"OpenStreetMap – {DEMO_AREA}" in surse:
@@ -1048,25 +1102,38 @@ def demo_bootstrap():
         db.DB_PATH.unlink(missing_ok=True)
         db.init()
     try:
-        g = osm.fetch_buildings(box(*harta_inaltimi.AREAS[DEMO_AREA]))
-        g = g.rename(columns={"an": "an_constructie"})
-        g["niveluri"] = g.apply(raport._levels, axis=1)
-        g["niveluri_sursa"] = np.where(g["niveluri"].notna(), "OSM", None)
+        city = harta_inaltimi.AREAS[DEMO_AREA]
+        s0 = harta_inaltimi.AREAS[DEMO_START]
+        cx, cy = (s0[0] + s0[2]) / 2, (s0[1] + s0[3]) / 2
+        tiles = sorted(osm._tiles(*city), key=lambda t: ((t[0] + t[2]) / 2 - cx) ** 2 + ((t[1] + t[3]) / 2 - cy) ** 2)
         sid = db.add_source(f"OpenStreetMap – {DEMO_AREA}", "OSM", 2024, "metri", "ODbL")
-        rep = db.import_buildings(g, 2024, sid, utilizator="demo")
-        db.set_zone(f"Zona pilot – {DEMO_AREA}", "pilot", box(*harta_inaltimi.AREAS[DEMO_AREA]))
-        db.log("demo: inventar OSM", "sistem", rep)
-        return f"importate {rep['acceptate']}"
+        db.set_zone(f"Zona pilot – {DEMO_AREA}", "pilot", box(*city))
+        prog = demo_progres()
+        prog.update(total=len(tiles), gata=0, cladiri=0, erori=[], terminat=False, lipsa=0)
+        prog["cladiri"] = _demo_import_tile(tiles[0], sid)
+        prog["gata"] = 1
+        db.log("demo: inventar OSM (zona centrală)", "sistem", {"cladiri": prog["cladiri"]})
+        threading.Thread(target=_demo_rest, args=(tiles[1:], sid, prog), daemon=True).start()
+        return f"importate {prog['cladiri']}"
     except Exception as e:
         return f"eroare: {e}"
 
 
 if DEMO:
-    with st.spinner("Pregătesc versiunea demonstrativă (inventarul OpenStreetMap al municipiului Iași, la prima pornire durează 1–2 minute)..."):
+    with st.spinner("Pregătesc versiunea demonstrativă (zona centrală a Iașiului, aproximativ un minut; "
+                    "restul municipiului se încarcă apoi în fundal)..."):
         _demo_state = demo_bootstrap()
     with st.sidebar:
         st.info("**Versiune demonstrativă.** Date publice OpenStreetMap pentru tot municipiul Iași. "
                 "Nu conține date cadastrale ale beneficiarului. Modificările nu se păstrează după repornire.")
+        _prog = demo_progres()
+        if _prog["total"] and not _prog["terminat"]:
+            _n = f"{_prog['cladiri']:,}".replace(",", ".")
+            st.caption(f"Se încarcă restul municipiului în fundal: {_prog['gata']}/{_prog['total']} bucăți, "
+                       f"{_n} clădiri până acum. Reîmprospătează pagina peste câteva minute.")
+        elif _prog["lipsa"]:
+            st.caption(f"{_prog['lipsa']} din {_prog['total']} bucăți ale municipiului nu s-au putut descărca "
+                       "din OpenStreetMap; repornirea aplicației le reîncearcă.")
         if _demo_state.startswith("eroare"):
             st.warning("OpenStreetMap nu a răspuns la pornire. Reîncarcă pagina peste un minut.")
             st.caption(_demo_state[:300])

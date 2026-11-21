@@ -112,6 +112,7 @@ function fillSelects(defL, defR) {
   }
 }
 // clădirile pe fiecare parte (fiecare în panoul ei, cu randare proprie, ca să poată fi tăiată de bară)
+const esc = v => String(v).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 function levelColor(n) {
   if (!n) return '#ffd400';
   const h = n <= 5 ? 60 * (n - 1) / 4 : 60 + 240 * (Math.min(n, 27) - 5) / 22;
@@ -122,7 +123,7 @@ for (const p of ['L', 'R']) {
   L.geoJSON(CFG.data[p], {
     pane: 'vec' + p, renderer: L.canvas({pane: 'vec' + p}),
     style: f => ({color: levelColor(f.properties.n), weight: 1.2, fillOpacity: CFG.fill, opacity: .95}),
-    onEachFeature: (f, l) => l.bindTooltip((f.properties.t || 'construcție') +
+    onEachFeature: (f, l) => l.bindTooltip(esc(f.properties.t || 'construcție') +
       (f.properties.n ? ' · ' + (f.properties.n === 1 ? 'P' : 'P+' + (f.properties.n - 1)) : ''), {sticky: true})
   }).addTo(map);
 }
@@ -186,8 +187,12 @@ def render(header, db_version):
                 years[p] = y
     cfg = {"bounds": list(bounds), "data": data, "years": years, "fill": fill, "fallback": WAYBACK_REZERVA}
     height = 620
-    components.html(HTML.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)).replace("__H__", str(height)),
-                    height=height + 6)
+    # datele OSM sunt editate public: „</” se neutralizează ca să nu poată închide blocul <script>
+    page = HTML.replace("__CFG__", json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/")).replace("__H__", str(height))
+    if hasattr(st, "iframe"):
+        st.iframe(page, height=height + 6)
+    else:
+        components.html(page, height=height + 6)
     n = {p: len(d["features"]) for p, d in data.items()}
     st.caption(
         "În fiecare parte alegi fundalul din lista de pe hartă: imagini satelitare Esri World Imagery Wayback "

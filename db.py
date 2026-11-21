@@ -363,10 +363,12 @@ def validate(gdf):
     return g, rep
 
 
-def import_buildings(gdf, an, sursa_id, field_map=None, complete=False, utilizator="", path=None):
+def import_buildings(gdf, an, sursa_id, field_map=None, complete=False, utilizator="", path=None, inventar=None):
     """Fluxul de import (M2/WP2): potrivește clădirile noi cu versiunile existente valabile
     la anul `an` și creează versiuni și evenimente. complete=True: importul acoperă tot
-    perimetrul, deci clădirile existente care lipsesc din import sunt marcate demolate."""
+    perimetrul, deci clădirile existente care lipsesc din import sunt marcate demolate.
+    inventar=True: importul completează inventarul inițial pe o zonă nouă (de ex. pe bucăți), fără
+    potrivire cu clădirile deja existente."""
     fm = field_map or {}
     g, rep = validate(gdf)
     ext = g.total_bounds if len(g) else None
@@ -374,7 +376,9 @@ def import_buildings(gdf, an, sursa_id, field_map=None, complete=False, utilizat
     if len(existing) and len(g):
         hull = shapely.box(*ext)
         existing = existing[existing.intersects(hull)]
-    first_inventory = existing.empty
+    if inventar:
+        existing = existing.iloc[0:0]
+    first_inventory = existing.empty if inventar is None else bool(inventar)
     tree = STRtree(existing.geometry.values) if len(existing) else None
     matched_existing = set()
     counts = {"inventar": 0, "noi": 0, "extinse": 0, "modificate": 0, "neschimbate": 0, "demolate": 0}
