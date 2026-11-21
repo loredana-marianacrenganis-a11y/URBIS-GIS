@@ -1,7 +1,8 @@
 # URBIS GIS – platformă GIS-IA pentru densificarea urbană (Iași)
 
-Prototip funcțional realizat în cadrul voucherului de inovare UEFISCDI PN-IV-INO-CI-2025-1
-(TUIASI × Hurjui & Asociații SRL). Acoperă toate cele 8 module din cererea de finanțare.
+Prototip funcțional realizat în cadrul proiectului „Dezvoltarea arhitecturii GIS pentru management
+cadastral și analiză urbană sustenabilă”, contract 29CI/2026, cod PN-IV-P7-7.1-CI-2025-0106
+(cec de inovare UEFISCDI; TUIASI × HURJUI & ASOCIAȚII S.R.L.). Acoperă toate cele 8 module din cererea de finanțare.
 
 | Modul | Pagina din aplicație | Livrabil |
 |---|---|---|
@@ -9,7 +10,7 @@ Prototip funcțional realizat în cadrul voucherului de inovare UEFISCDI PN-IV-I
 | M2 Import și validare | Import și validare (construcții, parcele, zone, documente) | WP2 |
 | M3 Hartă Web-GIS | Hartă și căutare (cursor de timp, 3 tematici, fișă, istoric) · Harta înălțimilor (OSM) | WP4 |
 | M4 Interogare spațială | Interogare spațială (filtre, zonă, export CSV/GeoJSON) | WP4 |
-| M5 Asistent GIS-IA cu RAG | Asistent (baza de date + documente fără date personale + documentația FLAIR-HUB2BF, cu surse); model Claude prin API sau model local (Ollama) | WP3 |
+| M5 Asistent GIS-IA cu RAG | Asistent (baza de date + documente fără date personale + documentația FLAIR-HUB2BF, cu surse); model Gemini (gratuit) sau Claude prin API, ori model local (Ollama) · Agent de documentare web (articole OpenAlex și presă locală, cu sinteză și surse) | WP3 |
 | M6 Indicatori și rapoarte | Indicatori densificare (POT, CUT, noi/demolate, tipuri de schimbări: fuziune, divizare, recompunere) · Rapoarte PDF · Neconcordanțe cadastrale | WP4 |
 | M7 Mapathon | Mapathon (validare pe telefon + aprobare) | WP4 |
 | M8 Administrare și jurnal | Jurnal și statistici · Valori de referință pentru impact (2026 vs 2027) · roluri | WP0, Etapa 2 |
@@ -48,10 +49,13 @@ Pentru ca nicio informație să nu părăsească calculatorul: instalează Ollam
 Implicit se poate seta și prin variabilele `URBIS_LLM=ollama` și `URBIS_OLLAMA_MODEL`.
 
 ## Configurare
-- Cheia API Anthropic: `cheie_api.txt` (local) sau `ANTHROPIC_API_KEY` (Secrets pe Streamlit Cloud).
+- Model de limbaj pentru asistent: `GEMINI_API_KEY` (gratuit, aistudio.google.com) sau `ANTHROPIC_API_KEY`
+  în Secrets pe Streamlit Cloud (local: variabile de mediu; cheia Anthropic poate sta și în `cheie_api.txt`);
+  alternativ Ollama, model local, fără cheie.
 - Parolă pentru rolurile Operator/Administrator (opțional): variabila `URBIS_PAROLA` sau în Secrets.
 - Pe găzduirea gratuită Streamlit Cloud, fișierul `urbis.sqlite` nu e permanent: pentru producție,
   folosiți serverul TUIASI cu PostgreSQL + PostGIS (`schema_postgis.sql`).
 
 Date © contribuitorii OpenStreetMap (ODbL). Rapoartele sunt informative și nu înlocuiesc documentele
-oficiale. Proiect finanțat de UEFISCDI.
+oficiale. Acest proiect a fost finanțat printr-un grant al Ministerului Educației și Cercetării,
+CCCDI – UEFISCDI, cod proiect PN-IV-P7-7.1-CI-2025-0106, în cadrul PNCDI IV.

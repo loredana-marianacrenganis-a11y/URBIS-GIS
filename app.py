@@ -1,6 +1,6 @@
 # app.py - URBIS GIS: platformă GIS-IA pentru managementul teritoriului și analiza
 # densificării urbane, cu validare pe municipiul Iași.
-# Voucher de inovare UEFISCDI PN-IV-INO-CI-2025-1 · TUIASI × Hurjui & Asociații SRL.
+# Contract 29CI/2026, cod PN-IV-P7-7.1-CI-2025-0106 (UEFISCDI, cec de inovare) · TUIASI × HURJUI & ASOCIAȚII S.R.L.
 #
 # Module (cererea de finanțare): M1 bază de date spațio-temporală · M2 import și validare ·
 # M3 hartă Web-GIS · M4 interogare spațială · M5 asistent GIS-IA cu RAG · M6 indicatori și
@@ -987,14 +987,17 @@ def page_jurnal():
 def page_despre():
     header("Despre proiect", "WP0")
     st.markdown("""
-**Dezvoltarea unei arhitecturi GIS-IA pentru managementul teritoriului și analiza dezvoltării urbane
-sustenabile, cu validare pe municipiul Iași.**
+**Dezvoltarea arhitecturii GIS pentru management cadastral și analiză urbană sustenabilă**
 
 | | |
 |---|---|
-| Finanțare | UEFISCDI, voucher de inovare PN-IV-INO-CI-2025-1 |
-| Furnizor | Universitatea Tehnică „Gheorghe Asachi” din Iași |
-| Beneficiar | SC Hurjui & Asociații SRL |
+| Contract | 29CI/2026 |
+| Cod proiect | PN-IV-P7-7.1-CI-2025-0106 |
+| Program | PNCDI IV, Programul 5.7 Parteneriat pentru inovare, Subprogramul 5.7.1 – Cec de inovare |
+| Finanțator | UEFISCDI |
+| Furnizor | Universitatea Tehnică „Gheorghe Asachi” din Iași (TUIASI) |
+| Beneficiar | HURJUI & ASOCIAȚII S.R.L. |
+| Perioada | 15.07.2026 – 31.12.2026 |
 | Categorie | A3 – Dezvoltare experimentală (prototip funcțional) |
 """)
     st.markdown("#### Unde se vede fiecare livrabil")
@@ -1017,7 +1020,7 @@ sustenabile, cu validare pe municipiul Iași.**
 Prototip de cercetare. Rapoartele sunt informative și nu înlocuiesc certificatul de urbanism, extrasul CF
 sau măsurătorile topografice. Datele personale ale titularilor nu sunt stocate (doar tip și cotă-parte).
 
-_Proiect finanțat de UEFISCDI. Conținutul nu reprezintă poziția oficială a finanțatorului._
+_Acest proiect a fost finanțat printr-un grant al Ministerului Educației și Cercetării, CCCDI – UEFISCDI, cod proiect PN-IV-P7-7.1-CI-2025-0106 (contract 29CI/2026), în cadrul PNCDI IV. Conținutul nu reprezintă poziția oficială a finanțatorului._
 """)
 
 
