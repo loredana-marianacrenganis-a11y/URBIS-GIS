@@ -170,9 +170,35 @@ def api_key():
 OLLAMA_URL = os.environ.get("URBIS_OLLAMA_URL", "http://localhost:11434")
 
 
+def gemini_key():
+    return os.environ.get("GEMINI_API_KEY", "").strip()
+
+
 def llm_provider():
-    """'claude' (implicit, prin API) sau 'ollama' (model local, datele nu părăsesc calculatorul)."""
-    return os.environ.get("URBIS_LLM", "claude").strip().lower()
+    """'claude' (prin API), 'gemini' (Google, cheie gratuită din aistudio.google.com)
+    sau 'ollama' (model local, datele nu părăsesc calculatorul)."""
+    p = os.environ.get("URBIS_LLM", "").strip().lower()
+    if p:
+        return p
+    if not api_key() and gemini_key():
+        return "gemini"
+    return "claude"
+
+
+GEMINI_MODEL = os.environ.get("URBIS_GEMINI_MODEL", "gemini-flash-latest")
+
+
+def _ask_gemini(prompt):
+    import requests
+    r = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
+        headers={"x-goog-api-key": gemini_key(), "Content-Type": "application/json"},
+        json={"contents": [{"parts": [{"text": prompt}]}],
+              "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800}},
+        timeout=60)
+    r.raise_for_status()
+    parts = r.json()["candidates"][0]["content"]["parts"]
+    return "".join(p.get("text", "") for p in parts)
 
 
 def ollama_models():
@@ -214,6 +240,14 @@ def answer(question, extra=None, db_context=None, provider=None, ollama_model=No
         "în datele platformei; nu inventa cifre.\n\n"
         f"Context:\n{context}\n\nÎntrebare: {question}"
     )
+    if provider == "gemini":
+        if not gemini_key():
+            return ("⚠️ Lipsește cheia GEMINI_API_KEY (gratuită, de pe aistudio.google.com). "
+                    "Mai jos vezi totuși secțiunile găsite în documente."), found
+        try:
+            return _ask_gemini(prompt), found
+        except Exception as e:
+            return f"⚠️ Gemini nu a răspuns: {e}", found
     if provider == "ollama":
         model = ollama_model or os.environ.get("URBIS_OLLAMA_MODEL", "llama3.1")
         try:
