@@ -145,6 +145,23 @@ def sinteza(intrebare, rezultate, provider, ollama_model=None):
 def render(header):
     header("Agent de documentare web", "M5", "Caută articole științifice (OpenAlex) și presă (Google News, GDELT) despre ce "
                                               "s-a construit într-o zonă și face o sinteză cu sursele citate")
+    with st.expander("📰 Context din presă și statistică: construcții și demolări în Iași (selecție)", expanded=True):
+        st.markdown(
+            "| Informație | Valoare | Sursa |\n|---|---|---|\n"
+            "| Autorizații de construire, clădiri rezidențiale, județul Iași, ian.–apr. 2025 | 560 (−2,3% față de 2024) | "
+            "[BZI, 27.06.2025](https://www.bzi.ro/se-construieste-mai-mult-la-iasi-in-aprilie-2025-dar-cum-stam-fata-de-anul-trecut-5294271) |\n"
+            "| Idem, ian.–mai 2025 | 734; urban 68 (−30), rural 666 (+23) | "
+            "[INS Iași, 11.07.2025](https://iasi.insse.ro/wp-content/uploads/2018/05/CP-17-din-11-07-2025-Autorizatii-Mai-2025.pdf) |\n"
+            "| Construcții ilegale identificate pe blocurile din Iași | 622: 471 șarpante, 151 mansarde | "
+            "[BZI, 09.04.2026](https://www.bzi.ro/sute-de-constructii-ilegale-de-pe-blocurile-din-iasi-vor-fi-demolate-de-primarie-mihai-chirica-procedam-in-regim-de-urgenta-la-desfiintarea-lor-5510686) |\n"
+            "| Prima demolare din campania de desființare | o mansardă, zona Podu Metalurgiei (iulie 2026) | "
+            "[BZI, 20.07.2026](https://www.bzi.ro/primaria-iasi-incepe-desfiintarea-mansardelor-neautorizate-prima-constructie-demolata-in-zona-podu-metalurgiei-5572973) |\n"
+            "| Exemplu de demolare urmată de construcție nouă (propunere, 2021) | vilă din Copou → bloc P+3, ~20 apartamente | "
+            "[BZI, 19.10.2021](https://www.bzi.ro/un-dezvoltator-imobiliar-din-iasi-demoleaza-vila-din-copou-ca-sa-faca-loc-unui-bloc-proiectul-lui-corneliu-petrea-stoicescu-boutique-apartments-este-la-mana-arhitectilor-traficul-rutier-din-zo-4291409) |"
+        )
+        st.caption("Cifrele INS sunt la nivel de județ și provin în cea mai mare parte din mediul rural. Nu există un total "
+                   "public al clădirilor demolate sau reconstruite în municipiu; platforma îl calculează la nivel de clădire "
+                   "(Indicatori densificare, tipologia schimbărilor).")
     c1, c2 = st.columns([3, 1])
     q = c1.text_input("Ce cauți?", "construcții noi și densificare urbană în Iași")
     zona = c2.text_input("Zonă (opțional)", "Iași")
