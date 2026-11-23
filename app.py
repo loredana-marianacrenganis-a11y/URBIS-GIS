@@ -23,6 +23,7 @@ import raport
 import raport_cladire
 import surse_publice
 import swipe
+import tablou
 from common import (rag, read_layer, gpkg_layers, init_session, circle, area_ha,
                     zone_polygon_from_file, show_sources, NAVY)
 
@@ -528,6 +529,10 @@ def page_cautare_web():
 
 def page_swipe():
     swipe.render(header, db_version)
+
+
+def page_tablou():
+    tablou.render(header, db_version, state_at, compare_years)
 
 
 def page_asistent():
@@ -1057,8 +1062,8 @@ def page_despre():
     rows = [("WP1", "Model conceptual al bazei de date spațio-temporale", "Model de date (M1)", page_model),
             ("WP2", "Flux de lucru pentru integrarea datelor multisursă", "Import și validare (M2)", page_import),
             ("WP3", "Arhitectură GIS cu asistent pe documente", "Asistent GIS (M5)", page_asistent),
-            ("WP4", "Implementare și validare pe Iași", "Hartă (M3), Interogare (M4), Indicatori și rapoarte (M6), "
-                                                       "Mapathon (M7)", page_harta),
+            ("WP4", "Implementare și validare pe Iași", "Hartă (M3), Interogare (M4), Tablou de bord, indicatori și "
+                                                       "rapoarte (M6), Mapathon (M7)", page_harta),
             ("WP0", "Management, diseminare, raport de impact", "Jurnal (M8), această pagină", page_jurnal)]
     st.dataframe(pd.DataFrame([r[:3] for r in rows], columns=["WP", "Livrabil", "În aplicație"]),
                  hide_index=True, width="stretch")
@@ -1170,7 +1175,8 @@ pages = {
                    st.Page(page_asistent, title="Asistent GIS · M5", icon="💬", url_path="asistent"),
                    st.Page(page_cautare_web, title="Documentare web · M5", icon="🌐",
                            url_path="cautare-web")],
-    "Analizează": [st.Page(page_indicatori, title="Indicatori densificare · M6", icon="📈", url_path="indicatori"),
+    "Analizează": [st.Page(page_tablou, title="Tablou de bord · M6", icon="📉", url_path="tablou"),
+                   st.Page(page_indicatori, title="Indicatori densificare · M6", icon="📈", url_path="indicatori"),
                    st.Page(page_rapoarte, title="Rapoarte PDF · M6", icon="📄", url_path="rapoarte"),
                    st.Page(page_neconcordante, title="Neconcordanțe cadastrale · M6", icon="⚠️",
                            url_path="neconcordante")],

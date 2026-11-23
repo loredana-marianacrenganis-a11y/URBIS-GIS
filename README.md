@@ -11,7 +11,7 @@ cadastral și analiză urbană sustenabilă”, contract 29CI/2026, cod PN-IV-P7
 | M3 Hartă Web-GIS | Hartă și căutare (cursor de timp, 3 tematici, fișă, istoric) · Harta înălțimilor (OSM) · Comparație cu swipe (imagini satelitare 2014–prezent, clădiri pe ani) | WP4 |
 | M4 Interogare spațială | Interogare spațială (filtre, zonă, export CSV/GeoJSON) | WP4 |
 | M5 Asistent GIS | Asistent (baza de date + documente fără date personale + documentația FLAIR-HUB2BF, cu surse) + surse publice: registrul MDLPA al documentațiilor de urbanism (PUG/PUZ/PUD, județul Iași) și ghidurile urban-gis.ro · Documentare web (articole OpenAlex și presă locală, cu sinteză și surse) | WP3 |
-| M6 Indicatori și rapoarte | Indicatori densificare (POT, CUT, noi/demolate, tipuri de schimbări: fuziune, divizare, recompunere) · Rapoarte PDF · Neconcordanțe cadastrale | WP4 |
+| M6 Indicatori și rapoarte | Tablou de bord (grafice pe ani și cartiere) · Indicatori densificare (POT, CUT, noi/demolate, tipuri de schimbări: fuziune, divizare, recompunere) · Rapoarte PDF · Neconcordanțe cadastrale | WP4 |
 | M7 Mapathon | Mapathon (validare pe telefon + aprobare) | WP4 |
 | M8 Administrare și jurnal | Jurnal și statistici · Valori de referință pentru impact (2026 vs 2027) · roluri | WP0, Etapa 2 |
 | WP0 Diseminare | Despre proiect | WP0 |
@@ -33,6 +33,7 @@ Altfel: `pip install -r requirements.txt` și `streamlit run app.py`.
 - `raport.py`, `raport_cladire.py` – rapoarte PDF · `osm.py` – OpenStreetMap · `harta_inaltimi.py`
 - `common.py`, `pagini_rapoarte.py` – funcții și pagini comune · `swipe.py` – harta de comparație cu swipe
 - `cautare_web.py` – documentarea web · `surse_publice.py` – surse publice pentru asistent (registrul MDLPA, urban-gis.ro)
+- `tablou.py` – tabloul de bord cu grafice · `docs/` – site-ul public Iași 2011 → 2024 (hartă, grafice, cartiere)
 
 ## Straturi de context
 Straturi de lucru › „Straturi de context din OpenStreetMap”: rețeaua stradală și punctele de interes (școli,

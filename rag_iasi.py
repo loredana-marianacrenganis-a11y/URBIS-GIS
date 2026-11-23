@@ -179,13 +179,18 @@ GEMINI_MODEL = os.environ.get("URBIS_GEMINI_MODEL", "gemini-flash-latest")
 
 
 def _ask_gemini(prompt):
+    import time
     import requests
-    r = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
-        headers={"x-goog-api-key": gemini_key(), "Content-Type": "application/json"},
-        json={"contents": [{"parts": [{"text": prompt}]}],
-              "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800}},
-        timeout=60)
+    for pauza in (2, 5, 0):
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
+            headers={"x-goog-api-key": gemini_key(), "Content-Type": "application/json"},
+            json={"contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800}},
+            timeout=60)
+        if r.status_code not in (429, 500, 502, 503, 504) or not pauza:
+            break
+        time.sleep(pauza)
     r.raise_for_status()
     parts = r.json()["candidates"][0]["content"]["parts"]
     return "".join(p.get("text", "") for p in parts)

@@ -303,11 +303,12 @@ def sectiune_registru(r):
             f"{r['date_spatiale']}."]
     if r.get("kit") not in ("", "-"):
         rand.append(f"Validare: kit {r['kit']}, pachet de reguli {r['pachet']}.")
-    if val("Număr HCL aprobare"):
-        rand.append(f"Aprobat prin HCL nr. {val('Număr HCL aprobare')} din {_data(val('Dată HCL aprobare'))}.")
-    if val("Număr HCL prelungire"):
-        rand.append(f"Valabilitate prelungită prin HCL nr. {val('Număr HCL prelungire')} din "
-                    f"{_data(val('Dată HCL prelungire'))}.")
+    for k, text in (("aprobare", "Aprobat prin HCL"), ("prelungire", "Valabilitate prelungită prin HCL")):
+        nr, data = val(f"Număr HCL {k}"), _data(val(f"Dată HCL {k}"))
+        nr = "" if nr in ("-", "–") else nr
+        data = "" if data in ("-", "–") else data
+        if nr or data:
+            rand.append(text + (f" nr. {nr}" if nr else "") + (f" din {data}" if data else "") + ".")
     if val("Dată valabilitate documentație"):
         rand.append(f"Dată valabilitate documentație: {_data(val('Dată valabilitate documentație'))}.")
     if val("Descriere") and norm(val("Descriere")) != norm(titlu):
