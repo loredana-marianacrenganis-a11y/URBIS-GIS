@@ -238,6 +238,10 @@ def page_harta():
     header("Hartă și căutare", "M3")
     ys = db.years()
     role = st.session_state.rol
+    if not ys and DEMO and not demo_progres()["terminat"]:
+        st.info("Se încarcă inventarul OpenStreetMap al municipiului Iași în fundal (de obicei sub un minut; "
+                "mai mult când serverele OpenStreetMap sunt aglomerate). Reîmprospătează pagina puțin mai târziu.")
+        return
     if not ys:
         st.info("Baza de date URBIS e goală. Încarcă un prim inventar de construcții pentru zona "
                 "pilot – din OpenStreetMap acum, sau din fișierele voastre (ortofoto, ANCPI) în "
@@ -1085,16 +1089,6 @@ def demo_progres():
     return {"total": 0, "gata": 0, "cladiri": 0, "erori": [], "terminat": False, "lipsa": 0}
 
 
-def _demo_import_tile(bounds, sid):
-    g = osm.fetch_buildings(box(*bounds))
-    if g.empty:
-        return 0
-    g = g.rename(columns={"an": "an_constructie"})
-    g["niveluri"] = g.apply(raport._levels, axis=1)
-    g["niveluri_sursa"] = np.where(g["niveluri"].notna(), "OSM", None)
-    return db.import_buildings(g, 2024, sid, utilizator="demo", inventar=True)["acceptate"]
-
-
 def _demo_rest(tiles, sid, prog):
     from concurrent.futures import ThreadPoolExecutor, as_completed
     rest = list(tiles)
@@ -1140,18 +1134,14 @@ def demo_bootstrap():
         db.set_zone(f"Zona pilot – {DEMO_AREA}", "pilot", box(*city))
         prog = demo_progres()
         prog.update(total=len(tiles), gata=0, cladiri=0, erori=[], terminat=False, lipsa=0)
-        prog["cladiri"] = _demo_import_tile(tiles[0], sid)
-        prog["gata"] = 1
-        db.log("demo: inventar OSM (zona centrală)", "sistem", {"cladiri": prog["cladiri"]})
-        threading.Thread(target=_demo_rest, args=(tiles[1:], sid, prog), daemon=True).start()
-        return f"importate {prog['cladiri']}"
+        threading.Thread(target=_demo_rest, args=(tiles, sid, prog), daemon=True).start()
+        return "pornit"
     except Exception as e:
         return f"eroare: {e}"
 
 
 if DEMO:
-    with st.spinner("Pregătesc versiunea demonstrativă (zona centrală a Iașiului, aproximativ un minut; "
-                    "restul municipiului se încarcă apoi în fundal)..."):
+    with st.spinner("Pornesc versiunea demonstrativă..."):
         _demo_state = demo_bootstrap()
     with st.sidebar:
         st.info("**Versiune demonstrativă.** Date publice OpenStreetMap pentru tot municipiul Iași. "
@@ -1159,7 +1149,7 @@ if DEMO:
         _prog = demo_progres()
         if _prog["total"] and not _prog["terminat"]:
             _n = f"{_prog['cladiri']:,}".replace(",", ".")
-            st.caption(f"Se încarcă restul municipiului în fundal: {_prog['gata']}/{_prog['total']} bucăți, "
+            st.caption(f"Se încarcă municipiul în fundal din OpenStreetMap: {_prog['gata']}/{_prog['total']} bucăți, "
                        f"{_n} clădiri până acum. Reîmprospătează pagina peste câteva minute.")
         elif _prog["lipsa"]:
             st.caption(f"{_prog['lipsa']} din {_prog['total']} bucăți ale municipiului nu s-au putut descărca "
