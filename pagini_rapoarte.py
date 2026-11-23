@@ -1,7 +1,5 @@
-# pagini_rapoarte.py - rapoartele pe construcție și pe zonă, harta straturilor proprii
-# (preluate din DensIași și integrate în URBIS GIS)
 
-from common import *  # noqa: F401,F403
+from common import *
 import osm
 import raport
 import raport_cladire
@@ -32,7 +30,7 @@ def page_constructie_osm():
         st.markdown("#### 2 · Straturi de evoluție 2011–2024 (opțional)")
         evo_b, evo_bf = evo_selector("bld")
         st.markdown("#### 3 · Generează raportul")
-        ai_b = st.checkbox("Include interpretarea AI (necesită cheie API)",
+        ai_b = st.checkbox("Include interpretarea automată (necesită cheie API)",
                            value=bool(rag.api_key()), disabled=not rag.api_key(), key="ai_b")
         go_b = st.button("🏠 Generează raportul construcției", type="primary",
                          disabled=not sel, width="stretch")
@@ -82,12 +80,12 @@ def page_constructie_osm():
                       "și rolul ei în densificarea zonei, în contextul studiului de densificare Iași. "
                       "Folosește doar cifrele date; nu inventa. Date: "
                       + raport_cladire.summary_text(ind))
-            with st.spinner("Asistentul AI interpretează datele..."):
+            with st.spinner("Se generează interpretarea..."):
                 try:
                     ai_text, found = rag.answer(prompt)
                     ai_src = [s for s, _ in found]
                 except Exception as e:
-                    st.warning(f"Interpretarea AI nu a reușit: {e}")
+                    st.warning(f"Interpretarea automată nu a reușit: {e}")
         with st.spinner("Generez PDF-ul..."):
             st.session_state.bld_rep = {
                 "pdf": raport_cladire.build_pdf(ind, title, ai_text, ai_src),
@@ -123,9 +121,8 @@ def page_constructie_osm():
             st.markdown("**Schimbări 2011–2024:** " +
                         (", ".join(ind["evolutie"]) or "niciuna pe amprenta clădirii"))
         if rep["ai"]:
-            st.markdown("**Interpretare AI**")
+            st.markdown("**Interpretare automată**")
             st.write(rep["ai"])
-
 
 
 def page_zona():
@@ -204,7 +201,7 @@ def page_zona():
         evo_gdf, evo_field = evo_selector("zona")
 
         st.markdown("#### 3 · Generează raportul")
-        use_ai = st.checkbox("Include interpretarea AI (necesită cheie API)",
+        use_ai = st.checkbox("Include interpretarea automată (necesită cheie API)",
                              value=bool(rag.api_key()), disabled=not rag.api_key())
         ok = zone is not None and area_ha(zone) <= MAX_ZONE_HA
         go = st.button("📄 Generează raportul", type="primary", disabled=not ok,
@@ -238,7 +235,6 @@ def page_zona():
                 st.session_state.drawn = new
                 st.rerun()
 
-    # --- generare
     if go:
         try:
             with st.spinner("Descarc clădirile din OpenStreetMap..."):
@@ -254,12 +250,12 @@ def page_zona():
                       "zona de mai jos, legând indicatorii de metodologia și zonele "
                       "studiului de densificare Iași. Nu inventa valori; folosește doar cifrele "
                       "date și contextul. Indicatori: " + raport.summary_text(ind, zone_name))
-            with st.spinner("Asistentul AI interpretează indicatorii..."):
+            with st.spinner("Se generează interpretarea..."):
                 try:
                     ai_text, found = rag.answer(prompt)
                     ai_src = [s for s, _ in found]
                 except Exception as e:
-                    st.warning(f"Interpretarea AI nu a reușit: {e}")
+                    st.warning(f"Interpretarea automată nu a reușit: {e}")
         with st.spinner("Generez PDF-ul..."):
             pdf = raport.build_pdf(zone, zone_name, ind, ai_text, ai_src)
             fig = raport.map_figure(zone, ind, dpi=110)
@@ -300,7 +296,7 @@ def page_zona():
                 st.caption("Secțiunea 2011–2024 se completează după încărcarea stratului "
                            "de evoluție.")
         if rep["ai"]:
-            st.markdown("**Interpretare AI**")
+            st.markdown("**Interpretare automată**")
             st.write(rep["ai"])
 
 
@@ -313,7 +309,6 @@ def _osm_layer(kind, zone_wkt):
 
 
 def osm_context_panel():
-    """Straturi de context din OpenStreetMap: rețeaua stradală și punctele de interes."""
     import db as _db
     from shapely.geometry import box as _box
     zs = _db.zones()
@@ -434,7 +429,7 @@ def page_straturi():
         else:
             st.caption("Dă clic pe o clădire, un poligon sau o zonă de studiu.")
             question = None
-        if question and st.button("🤖 Întreabă asistentul despre selecție"):
+        if question and st.button("💬 Întreabă asistentul despre selecție"):
             text, found = run_question(question)
             st.markdown(text)
             if found:

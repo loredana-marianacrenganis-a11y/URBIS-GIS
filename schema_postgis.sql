@@ -1,11 +1,5 @@
--- URBIS GIS – modelul conceptual al bazei de date spațio-temporale (livrabil WP1)
--- PostgreSQL 16 + PostGIS. Aceeași structură e implementată portabil în SQLite (db.py).
--- Principiu: nicio înregistrare nu se suprascrie; fiecare modificare închide versiunea
--- veche (valid_pana_la) și deschide una nouă (valid_de_la), cu sursa și evenimentul ei.
--- Sistem de coordonate: Stereo 70 (EPSG:3844).
-
 CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE EXTENSION IF NOT EXISTS vector;          -- pgvector, pentru indexul RAG
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE sursa (
   id            serial PRIMARY KEY,
@@ -21,14 +15,14 @@ CREATE TABLE sursa (
 CREATE TABLE zona (
   id          serial PRIMARY KEY,
   nume        text NOT NULL,
-  tip         text NOT NULL,                     -- pilot, UTR, cartier, zonă de studiu
+  tip         text NOT NULL,
   cod_siruta  text,
   geom        geometry(MultiPolygon, 3844) NOT NULL
 );
 
 CREATE TABLE imobil (
   id                  serial PRIMARY KEY,
-  cod_imobil          text NOT NULL,             -- identitate stabilă între versiuni
+  cod_imobil          text NOT NULL,
   nr_cadastral        text,
   nr_cf               text,
   suprafata_acte      numeric,
@@ -42,7 +36,7 @@ CREATE TABLE imobil (
   CHECK (valid_pana_la IS NULL OR valid_pana_la > valid_de_la)
 );
 
-CREATE TABLE titular (                           -- date personale minimizate (GDPR)
+CREATE TABLE titular (
   id          serial PRIMARY KEY,
   cod_imobil  text NOT NULL,
   tip         text CHECK (tip IN ('fizic','juridic')),
@@ -51,11 +45,11 @@ CREATE TABLE titular (                           -- date personale minimizate (G
 
 CREATE TABLE constructie (
   id               serial PRIMARY KEY,
-  cod_constructie  text NOT NULL,                -- identitate stabilă între versiuni
+  cod_constructie  text NOT NULL,
   cod_imobil       text,
   tip              text,
   niveluri         integer,
-  niveluri_sursa   text,                         -- OSM, fișier, estimat, mapathon
+  niveluri_sursa   text,
   an_constructie   integer,
   adresa           text,
   nume             text,
@@ -72,19 +66,19 @@ CREATE TABLE document (
   id               serial PRIMARY KEY,
   cod_imobil       text,
   cod_constructie  text,
-  tip              text,                         -- CF, plan de amplasament, AC, PUZ/PUG, normativ
+  tip              text,
   titlu            text,
   data             date,
   fisier           text,
   text             text,
-  date_personale   boolean NOT NULL DEFAULT false   -- true: nu intră în indexul RAG (GDPR)
+  date_personale   boolean NOT NULL DEFAULT false
 );
 
-CREATE TABLE fragment_document (                 -- index RAG
+CREATE TABLE fragment_document (
   id           serial PRIMARY KEY,
   document_id  integer REFERENCES document(id) ON DELETE CASCADE,
   text         text NOT NULL,
-  embedding    vector(384)                       -- paraphrase-multilingual-MiniLM-L12-v2
+  embedding    vector(384)
 );
 
 CREATE TABLE lucrare (
@@ -100,16 +94,16 @@ CREATE TABLE lucrare (
 CREATE TABLE eveniment (
   id          serial PRIMARY KEY,
   ts          timestamptz NOT NULL DEFAULT now(),
-  entitate    text NOT NULL,                     -- constructie, imobil
+  entitate    text NOT NULL,
   cod         text NOT NULL,
-  tip         text NOT NULL,                     -- inventar, creare, extindere, modificare, demolare, validare, corectare
+  tip         text NOT NULL,
   an          integer,
   sursa_id    integer REFERENCES sursa(id),
   detalii     text,
   utilizator  text
 );
 
-CREATE TABLE observatie (                        -- validare prin mapathon (M7)
+CREATE TABLE observatie (
   id                serial PRIMARY KEY,
   ts                timestamptz NOT NULL DEFAULT now(),
   cod_constructie   text,
@@ -127,13 +121,13 @@ CREATE TABLE observatie (                        -- validare prin mapathon (M7)
 CREATE TABLE indicator (
   id           serial PRIMARY KEY,
   zona_id      integer REFERENCES zona(id),
-  tip          text,                             -- POT, CUT, densitate, construcții noi
+  tip          text,
   perioada     text,
   valoare      numeric,
   calculat_la  timestamptz DEFAULT now()
 );
 
-CREATE TABLE referinta (                         -- valori de referință pentru raportul de impact
+CREATE TABLE referinta (
   id          serial PRIMARY KEY,
   an          integer NOT NULL,
   indicator   text NOT NULL,
@@ -144,7 +138,7 @@ CREATE TABLE referinta (                         -- valori de referință pentru
   UNIQUE (an, indicator)
 );
 
-CREATE TABLE jurnal (                            -- M8, date pentru raportul de impact
+CREATE TABLE jurnal (
   id         serial PRIMARY KEY,
   ts         timestamptz NOT NULL DEFAULT now(),
   actiune    text NOT NULL,
@@ -160,6 +154,3 @@ CREATE INDEX ON imobil USING gist (geom);
 CREATE INDEX ON imobil (nr_cadastral);
 CREATE INDEX ON zona USING gist (geom);
 CREATE INDEX ON eveniment (cod);
-
--- Starea fondului construit la un an dat (exemplu: 2024)
--- SELECT * FROM constructie WHERE valid_de_la <= 2024 AND (valid_pana_la IS NULL OR valid_pana_la > 2024);

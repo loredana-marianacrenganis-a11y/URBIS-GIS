@@ -1,13 +1,3 @@
-# rag_iasi.py - RAG simplu peste documentația fluxului FLAIR-HUB2BF pentru studiul Iași
-#
-# Descarcă fișierele .md din documentația tehnică a fluxului FLAIR-HUB2BF, le împarte pe
-# secțiuni (titluri markdown), face embeddings și răspunde la întrebări cu un LLM,
-# indicând fișierul sursă.
-#
-# Instalare:  pip install fastembed numpy anthropic requests
-# Cheie API:  variabila ANTHROPIC_API_KEY (pe Streamlit Cloud: Settings -> Secrets),
-#             sau fișierul cheie_api.txt lângă script (local)
-# Rulare:     python rag_iasi.py
 
 import os
 import re
@@ -20,7 +10,6 @@ import anthropic
 
 RAW = "https://raw.githubusercontent.com/subdense/dashboard/master/"
 
-# Documentele folosite + statutul rezultatelor (notele echipei)
 DOCS = {
     "Studies/IasiStudy.md": None,
     "Processes/FLAIR-HUB2BF.md": None,
@@ -30,7 +19,6 @@ DOCS = {
         "Rezultate intermediare; NU vor fi publicate open source.",
     "Processes/GeneralizationBuildingFootprins.md":
         "Rezultate finale; VOR fi publicate open source.",
-    # pagini adăugate de Ana-Maria Raimond (email iulie 2026)
     "Data/Datasources.md": None,
     "Processes/BuildingsFootprintsAnnotation.md": None,
     "Processes/ManualBuildingFootprintsCorrection.md": None,
@@ -39,7 +27,6 @@ DOCS = {
     "Processes/ComputeBuildingChange.md": None,
 }
 
-# Informații din corespondența echipei (iulie–august 2026) care nu sunt în pagini
 NOTES = [
     "Plan de publicare (iulie 2026): seturile RO-IAS-Building-2024 (rezultatul "
     "FLAIR-HUB2BF) și RO-IAS-Building-GT-2024 (corectarea manuală a FLAIR-HUB2BF) "
@@ -57,34 +44,27 @@ NOTES = [
 ]
 
 
-# 1. Descarcă documentele și le împarte pe secțiuni (## titlu)
 def load_chunks():
-    chunks = [("Note echipă (email 2026)", n) for n in NOTES]  # (sursa, text)
+    chunks = [("Note echipă (email 2026)", n) for n in NOTES]
     for path, status in DOCS.items():
         text = requests.get(RAW + path, timeout=30).text
         title = text.splitlines()[0].lstrip("# ").strip()
         if status:
             chunks.append((path, f"{title} - statutul rezultatelor: {status}"))
-        # împarte la fiecare titlu de nivel 2 (## ...)
         for section in re.split(r"\n(?=##)", text):
             section = section.strip()
             if len(section) <= 30:
                 continue
             heading = section.splitlines()[0]
             for part in split_long(section):
-                if len(part.strip()) < 40:  # doar un titlu, fără conținut
+                if len(part.strip()) < 40:
                     continue
                 if not part.startswith("#"):
                     part = heading + "\n" + part
-                # titlul documentului păstrează contextul fiecărei bucăți
                 chunks.append((path, f"[{title}]\n{part.strip()}"))
     return chunks
 
 
-# Modelul de embedding citește doar începutul unui text lung (~128 de tokeni),
-# așa că secțiunile lungi se taie pe elementele de listă de nivel 1 ("* ").
-# Un element încă prea lung se taie pe sub-elemente ("  * "), iar fiecare bucată
-# păstrează prima linie a elementului-părinte (ex. numele setului de date).
 def split_long(section, limit=800):
     if len(section) < limit:
         return [section]
@@ -94,7 +74,7 @@ def split_long(section, limit=800):
             out.append(item)
             continue
         subs = re.split(r"\n(?=\s{2,}\* )", item)
-        if len(subs) == 1:  # fără sub-elemente: liste numerotate sau paragrafe
+        if len(subs) == 1:
             subs = re.split(r"\n(?=\d+\. )|\n\s*\n", item)
         parent = subs[0].splitlines()[0]
         out.append(subs[0])
@@ -105,9 +85,6 @@ def split_long(section, limit=800):
 chunks = load_chunks()
 print(f"Am încărcat {len(chunks)} secțiuni din {len(DOCS)} documente.")
 
-# 2. Embeddings (model multilingv: întrebi în română, documentele sunt în engleză).
-#    fastembed rulează același model ca sentence-transformers, dar în format ONNX
-#    (~0,2 GB, fără PyTorch), ca să încapă în memoria mică a găzduirii gratuite.
 embedder = TextEmbedding("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
 
@@ -119,7 +96,6 @@ def embed(texts):
 vectors = embed([t for _, t in chunks])
 
 
-# 3. Caută secțiunile cele mai relevante (documentația + documentele încărcate în platformă)
 _extra_cache = {}
 
 
@@ -143,7 +119,6 @@ def retrieve(question, k=4, extra=None):
 
 
 def split_text(src, text, size=700):
-    """Împarte un document încărcat în fragmente pentru căutare (pe paragrafe)."""
     out, cur = [], ""
     for para in text.split("\n\n"):
         if len(cur) + len(para) > size and cur:
@@ -155,8 +130,7 @@ def split_text(src, text, size=700):
     return out
 
 
-# 4. Generează răspunsul cu sursele
-_client = None  # creat la prima întrebare, ca harta să meargă și fără cheie API
+_client = None
 
 
 def api_key():
@@ -175,8 +149,6 @@ def gemini_key():
 
 
 def llm_provider():
-    """'claude' (prin API), 'gemini' (Google, cheie gratuită din aistudio.google.com)
-    sau 'ollama' (model local, datele nu părăsesc calculatorul)."""
     p = os.environ.get("URBIS_LLM", "").strip().lower()
     if p:
         return p
@@ -220,20 +192,17 @@ def _ask_ollama(prompt, model):
 
 
 def answer(question, extra=None, db_context=None, provider=None, ollama_model=None):
-    """Întoarce (răspuns, secțiunile găsite). extra: fragmente din documentele încărcate
-    în platformă (fără cele cu date personale); db_context: rezumatul agregat al bazei de date
-    URBIS (sursa [Baza de date URBIS]); provider: 'claude' sau 'ollama'."""
     provider = (provider or llm_provider()).lower()
     found = retrieve(question, extra=extra)
     if db_context:
         found = [("Baza de date URBIS", db_context)] + found
     if provider == "claude" and not api_key():
         return ("⚠️ Asistentul nu are cheie API. Pe Streamlit Cloud adaug-o la "
-                "Settings → Secrets; local, pune-o în cheie_api.txt, sau alege un model local (Ollama). "
+                "Settings → Secrets; local, pune-o în cheie_api.txt, sau alege varianta locală. "
                 "Mai jos vezi totuși secțiunile găsite în documente."), found
     context = "\n\n---\n\n".join(f"Sursa: {src}\n{txt}" for src, txt in found)
     prompt = (
-        "Ești asistentul GIS-IA al platformei URBIS GIS (densificare urbană, Iași; voucher "
+        "Ești asistentul platformei URBIS GIS (densificare urbană, Iași; voucher "
         "UEFISCDI TUIASI). Răspunde în română, concis, doar pe baza contextului. După fiecare "
         "afirmație indică sursa în paranteze drepte, de ex. [IasiStudy.md] sau "
         "[Baza de date URBIS]. Dacă informația nu e în context, spune clar că nu există "
@@ -247,14 +216,13 @@ def answer(question, extra=None, db_context=None, provider=None, ollama_model=No
         try:
             return _ask_gemini(prompt), found
         except Exception as e:
-            return f"⚠️ Gemini nu a răspuns: {e}", found
+            return f"⚠️ Serviciul online nu a răspuns: {e}", found
     if provider == "ollama":
         model = ollama_model or os.environ.get("URBIS_OLLAMA_MODEL", "llama3.1")
         try:
             return _ask_ollama(prompt, model), found
         except Exception as e:
-            return (f"⚠️ Modelul local ({model}) nu răspunde la {OLLAMA_URL}: {e}. Pornește Ollama "
-                    "(ollama serve) și descarcă modelul (ollama pull " + model + ")."), found
+            return f"⚠️ Varianta locală nu răspunde la {OLLAMA_URL}: {e}.", found
     global _client
     if _client is None:
         _client = anthropic.Anthropic(api_key=api_key())

@@ -1,10 +1,3 @@
-# estimare.py - estimarea numărului de niveluri pentru clădirile fără date în OSM.
-#
-# Un model de tip gradient boosting învață, din clădirile CU niveluri cunoscute din zona
-# încărcată, legătura dintre niveluri și: tipul clădirii, amprentă, formă (alungire),
-# densitatea vecinătății, nivelurile vecinilor cunoscuți și distanța față de centru.
-# Precizia se măsoară prin validare încrucișată și se afișează utilizatorului.
-# Dacă sunt prea puține clădiri cu niveluri cunoscute, se folosesc reguli simple pe tip.
 
 import numpy as np
 import pandas as pd
@@ -15,7 +8,6 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import KFold
 
 STEREO70 = 3844
-# Piața Unirii, Iași, transformată în Stereo 70
 CENTER_S70 = Transformer.from_crs(4326, STEREO70, always_xy=True).transform(27.5815, 47.1650)
 MIN_TRAIN = 60
 K_NEIGH = 8
@@ -28,7 +20,6 @@ HOUSES = {"house", "detached", "semidetached_house", "terrace", "bungalow", "vil
 def _features(gdf):
     g = gdf.to_crs(STEREO70)
     area = g.area.values
-    # alungirea = latura lungă / latura scurtă a dreptunghiului minim rotit
     rect = shapely.minimum_rotated_rectangle(g.geometry.values)
     w, h = np.ones(len(g)), np.ones(len(g))
     for i, r in enumerate(rect):
@@ -51,8 +42,6 @@ def _features(gdf):
 
 
 def _neighbour_levels(xy, levels):
-    """Mediana nivelurilor celor mai apropiați K vecini CU niveluri cunoscute (fără clădirea
-    însăși), pe o rază de 250 m."""
     known = ~np.isnan(levels)
     out = np.full(len(xy), np.nan)
     if known.sum() < 3:
@@ -69,7 +58,6 @@ def _neighbour_levels(xy, levels):
 
 
 def _rules(gdf):
-    """Estimare de rezervă, pe tip și amprentă (tipologii uzuale în Iași)."""
     area = gdf.to_crs(STEREO70).area.values
     out = []
     for t, a in zip(gdf["tip"].fillna("yes"), area):
@@ -87,8 +75,6 @@ def _rules(gdf):
 
 
 def estimate(gdf, niv_col="niv"):
-    """Adaugă coloanele 'niv_final' și 'niv_sursa' ('OSM' / 'estimat') și întoarce
-    (gdf, info), unde info descrie metoda și precizia."""
     gdf = gdf.copy()
     levels = gdf[niv_col].astype(float).values
     known = ~np.isnan(levels)
@@ -99,7 +85,6 @@ def estimate(gdf, niv_col="niv"):
     if known.sum() >= MIN_TRAIN:
         y = np.clip(levels[known], 1, 30)
         Xk = X[known]
-        # precizia: validare încrucișată pe clădirile cu niveluri cunoscute
         errs, base = [], []
         for tr, te in KFold(5, shuffle=True, random_state=0).split(Xk):
             m = HistGradientBoostingRegressor(categorical_features="from_dtype",
@@ -118,7 +103,6 @@ def estimate(gdf, niv_col="niv"):
             "eroare_fara_model": float(np.concatenate(base).mean()),
         })
         if info["eroare_medie"] >= info["eroare_fara_model"]:
-            # modelul nu bate o estimare naivă: nu îl folosim
             info = {k: info[k] for k in ("cunoscute", "estimate")}
             info["metoda"] = ("reguli pe tip și amprentă (modelul învățat nu a fost mai precis "
                               "decât o estimare simplă în această zonă)")

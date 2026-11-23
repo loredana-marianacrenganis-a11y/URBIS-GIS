@@ -1,11 +1,3 @@
-# common.py - funcții comune ale aplicației URBIS GIS (încărcare straturi, OSM, hărți, asistent)
-#
-# Raport PDF pe zonă/parcelă (clădiri OpenStreetMap + straturi de evoluție),
-# hartă GIS interactivă și asistent care răspunde din documentația fluxului FLAIR-HUB2BF.
-#
-# Instalare:  pip install -r requirements.txt
-# Cheie API:  ANTHROPIC_API_KEY (Streamlit Cloud: Settings -> Secrets) sau cheie_api.txt
-# Rulare:     streamlit run app.py
 
 import json
 import tempfile
@@ -28,14 +20,12 @@ import raport_cladire
 HERE = Path(__file__).parent
 LAYER_DIR = HERE / "straturi"
 ZONES_FILE = HERE / "zone_iasi.geojson"
-MAX_FEATURES = 20000            # peste atât, harta din browser devine lentă
-MAX_ZONE_HA = 500               # limită pentru interogarea OSM (5 km²)
+MAX_FEATURES = 20000
+MAX_ZONE_HA = 500
 NAVY = "#1F2A4D"
 PALETTE = ["#d7263d", "#1b998b", "#2e86ab", "#f49d37", "#7b2cbf",
            "#3f88c5", "#e36414", "#5c946e", "#c2185b", "#6d6875"]
 
-# Centre APROXIMATIVE ale zonelor de studiu (din IasiStudy.md), până se
-# adaugă zone_iasi.geojson cu limitele reale (câmpul "name").
 ZONES = {
     "Copou": (47.1790, 27.5690),
     "City Center": (47.1620, 27.5850),
@@ -46,7 +36,6 @@ ZONES = {
 }
 
 
-# ---------------------------------------------------------------- RAG
 @st.cache_resource(show_spinner="Pregătesc asistentul (documente + model)...")
 def load_rag():
     import rag_iasi
@@ -56,12 +45,9 @@ def load_rag():
 rag = load_rag()
 
 
-# ---------------------------------------------------------------- citire straturi
 def _prepare(gdf):
-    """Reproiectează în WGS84 și face atributele afișabile."""
     if gdf.crs is None:
         minx, miny, maxx, maxy = gdf.total_bounds
-        # coordonate geografice -> WGS84, altfel presupunem Stereo 70 (România)
         gdf = gdf.set_crs(4326 if (abs(maxx) <= 180 and abs(maxy) <= 90) else 3844)
     crs_name = gdf.crs.to_string()
     gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].to_crs(4326)
@@ -76,7 +62,7 @@ def read_layer(name, data, layer=None):
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / name
         path.write_bytes(data)
-        if path.suffix.lower() == ".zip":          # shapefile arhivat
+        if path.suffix.lower() == ".zip":
             zipfile.ZipFile(path).extractall(d)
             shp = next(Path(d).rglob("*.shp"), None)
             if shp is None:
@@ -95,7 +81,6 @@ def gpkg_layers(name, data):
 
 
 def add_source(name, data):
-    """Adaugă un fișier ca unul sau mai multe straturi (un GPKG poate avea mai multe)."""
     layers = gpkg_layers(name, data) if name.lower().endswith(".gpkg") else [None]
     for lyr in layers:
         key = f"{name} › {lyr}" if lyr and len(layers) > 1 else name
@@ -109,7 +94,6 @@ def add_source(name, data):
 
 
 def init_session():
-    """Apelată la fiecare rulare: straturile proprii ale sesiunii (din folderul straturi/)."""
     if "layers" not in st.session_state:
         st.session_state.layers = {}
         if LAYER_DIR.exists():
@@ -119,7 +103,6 @@ def init_session():
 
 
 def layers_panel():
-    """Încărcarea straturilor proprii ale sesiunii (nu intră în baza de date)."""
     st.caption("Straturi de lucru doar pentru sesiunea ta (ex. RO-IAS-Evolution-2011-24). "
                "Pentru a le păstra în baza de date, folosește modulul Import.")
     uploads = st.file_uploader("Adaugă straturi (.gpkg, .geojson, .zip cu shapefile)",
@@ -155,7 +138,6 @@ def circle(lat, lon, radius_m):
 
 
 def zone_polygon_from_file(gdf):
-    """Poligonul parcelei din fișier: poligoane, sau linii închise (ex. DXF de la topograf)."""
     polys = gdf[gdf.geom_type.isin(["Polygon", "MultiPolygon"])].geometry
     if len(polys):
         return unary_union(polys.buffer(0))
@@ -176,7 +158,6 @@ def study_zone_polygons():
             for i, f in enumerate(data["features"])}
 
 
-# ---------------------------------------------------------------- utilitare
 def show_sources(found):
     with st.expander(f"📄 Secțiunile găsite ({len(found)})"):
         for src, txt in found:
@@ -217,9 +198,7 @@ def base_map(location=(47.158, 27.590), zoom=12):
     return m
 
 
-
 def evo_selector(key):
-    """Alegerea stratului de evoluție 2011–2024 (dacă a fost încărcat)."""
     layer_keys = list(st.session_state.layers)
     if not layer_keys:
         st.caption("Încarcă stratul RO-IAS-Evolution-2011-24 din bara laterală ca să apară "

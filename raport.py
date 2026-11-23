@@ -1,4 +1,3 @@
-# raport.py - indicatori de densificare pentru o zonă și raportul PDF
 
 import io
 import re
@@ -12,7 +11,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from fpdf import FPDF
 
-STEREO70 = 3844          # sistemul național de coordonate, pentru arii în m²
+STEREO70 = 3844
 NAVY = "#1F2A4D"
 ACCENT = "#d7263d"
 LEVEL_BINS = [0, 1, 2, 4, 8, 200]
@@ -32,9 +31,7 @@ TIP_RO = {
 }
 
 
-# ---------------------------------------------------------------- indicatori
 def _levels(row):
-    """Număr de niveluri supraterane din OSM (building:levels sau înălțime/3 m)."""
     for val, div in ((row.get("niveluri"), 1), (row.get("inaltime"), 3.0)):
         if val:
             m = re.search(r"\d+(\.\d+)?", str(val))
@@ -44,8 +41,6 @@ def _levels(row):
 
 
 def compute(zone_wgs84, buildings, evolution=None, evo_field=None):
-    """zone_wgs84: poligon shapely (EPSG:4326); buildings: GeoDataFrame OSM;
-    evolution: strat de evoluție opțional (GeoDataFrame) cu câmpul evo_field."""
     zone = gpd.GeoSeries([zone_wgs84], crs=4326).to_crs(STEREO70)
     zone_area = float(zone.area.iloc[0])
     centroid = zone_wgs84.centroid
@@ -87,7 +82,6 @@ def compute(zone_wgs84, buildings, evolution=None, evo_field=None):
         ind["dupa_2011"] = int((years >= 2011).sum())
     ind["cladiri"] = b
 
-    # densificare 2011-2024 din stratul de evoluție (dacă a fost încărcat)
     if evolution is not None and evo_field:
         e = evolution.to_crs(STEREO70)
         e = e[e.geometry.representative_point().within(zone.iloc[0])].copy()
@@ -101,7 +95,6 @@ def compute(zone_wgs84, buildings, evolution=None, evo_field=None):
 
 
 def summary_text(ind, zone_name):
-    """Rezumat al indicatorilor, folosit ca întrebare pentru asistentul AI."""
     if not ind["nr_cladiri"]:
         return f"Zona {zone_name} ({ind['zona_ha']:.1f} ha) nu are clădiri cartografiate în OSM."
     lines = [
@@ -123,7 +116,6 @@ def summary_text(ind, zone_name):
     return " ".join(lines)
 
 
-# ---------------------------------------------------------------- figuri
 def map_figure(zone_wgs84, ind, dpi=170):
     zone = gpd.GeoSeries([zone_wgs84], crs=4326).to_crs(STEREO70)
     fig, ax = plt.subplots(figsize=(7, 6), dpi=dpi)
@@ -138,7 +130,6 @@ def map_figure(zone_wgs84, ind, dpi=170):
     zone.boundary.plot(ax=ax, color=NAVY, linewidth=1.6, linestyle="--")
     ax.set_axis_off()
     ax.set_aspect("equal")
-    # bară de scară
     x0, y0, x1, y1 = zone.total_bounds
     span = x1 - x0
     bar = next(s for s in (50, 100, 200, 500, 1000, 2000, 5000) if s > span / 6)
@@ -177,7 +168,6 @@ def bar_figure(series, title, color=NAVY, dpi=170):
     return buf.getvalue()
 
 
-# ---------------------------------------------------------------- PDF
 FONT_DIR = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
 
 
@@ -246,7 +236,6 @@ def build_pdf(zone_wgs84, zone_name, ind, ai_text=None, ai_sources=None):
     pdf.add_font("DejaVu", "B", str(FONT_DIR / "DejaVuSans-Bold.ttf"))
     pdf.alias_nb_pages()
 
-    # --- pagina 1: copertă + hartă + indicatori cheie
     pdf.add_page()
     pdf.set_fill_color(31, 42, 77)
     pdf.rect(0, 0, 210, 34, "F")
@@ -287,7 +276,6 @@ def build_pdf(zone_wgs84, zone_name, ind, ai_text=None, ai_sources=None):
     else:
         pdf.para("În această zonă nu există clădiri cartografiate în OpenStreetMap.")
 
-    # --- pagina 2: fondul construit
     if ind["nr_cladiri"]:
         pdf.add_page()
         pdf.h1("1. Fondul construit")
@@ -316,7 +304,6 @@ def build_pdf(zone_wgs84, zone_name, ind, ai_text=None, ai_sources=None):
                                             "Clădiri după regim de înălțime (niveluri cunoscute)",
                                             color="#4f84c4")), x=20, w=170)
 
-    # --- densificare 2011-2024
     pdf.add_page()
     pdf.h1("2. Densificare 2011–2024")
     if "evolutie" in ind:
@@ -335,18 +322,16 @@ def build_pdf(zone_wgs84, zone_name, ind, ai_text=None, ai_sources=None):
                  f"completat, dintre care {ind['dupa_2011']} construite în 2011 sau după.",
                  size=8.5)
 
-    # --- interpretare AI
     if ai_text:
         pdf.ln(2)
-        pdf.h1("3. Interpretare asistată de AI")
+        pdf.h1("3. Interpretare automată")
         pdf.para(ai_text)
         if ai_sources:
             pdf.para("Documente consultate: " + ", ".join(sorted(set(ai_sources))), size=8)
-        pdf.para("Textul este generat automat de un model de limbaj pe baza indicatorilor de mai "
+        pdf.para("Textul este generat automat pe baza indicatorilor de mai "
                  "sus și a documentației fluxului FLAIR-HUB2BF. Verificați concluziile înainte de utilizare.",
                  size=8)
 
-    # --- surse și limitări
     pdf.ln(2)
     pdf.h1(f"{4 if ai_text else 3}. Surse, metodă și limitări")
     pdf.para("Surse: clădiri OpenStreetMap (© contribuitorii OpenStreetMap, licență ODbL), "

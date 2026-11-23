@@ -1,5 +1,3 @@
-# raport_cladire.py - raport pe o singură construcție (în stilul rapoartelor pe parcelă):
-# plan cu dimensiuni și coordonate Stereo 70, caracteristici, vecinătate, densificare.
 
 import io
 import math
@@ -13,9 +11,9 @@ from shapely.geometry import MultiPolygon, Point
 import raport
 from raport import STEREO70, NAVY, ACCENT, TIP_RO, fmt
 
-CONTEXT_M = 100        # raza vecinătății analizate
-NEAR_M = 50            # clădiri „învecinate”
-MAX_VERTICES = 16      # planul se simplifică dacă are mai multe colțuri
+CONTEXT_M = 100
+NEAR_M = 50
+MAX_VERTICES = 16
 
 
 def regim(niv):
@@ -25,7 +23,6 @@ def regim(niv):
 
 
 def pick_building(buildings, lat, lon, tol_m=15):
-    """Clădirea care conține punctul (sau cea mai apropiată, sub tol_m metri)."""
     if buildings.empty:
         return None
     pt = gpd.GeoSeries([Point(lon, lat)], crs=4326).to_crs(STEREO70).iloc[0]
@@ -42,14 +39,12 @@ def _main_polygon(geom):
 
 
 def compute(idx, buildings, evolution=None, evo_field=None):
-    """idx: indexul clădirii în buildings (OSM, EPSG:4326)."""
     b = buildings.to_crs(STEREO70).copy()
     row = b.loc[idx]
     geom = row.geometry
     poly = _main_polygon(geom)
     plan = poly if len(poly.exterior.coords) - 1 <= MAX_VERTICES else poly.simplify(0.5)
 
-    # dimensiuni: dreptunghiul minim rotit
     rect = list(poly.minimum_rotated_rectangle.exterior.coords)
     sides = sorted({round(math.dist(rect[i], rect[i + 1]), 1) for i in range(2)})
     dx, dy = rect[1][0] - rect[0][0], rect[1][1] - rect[0][1]
@@ -73,7 +68,6 @@ def compute(idx, buildings, evolution=None, evo_field=None):
         "geom_s70": geom, "plan_s70": plan,
     }
 
-    # vecinătate
     others = b.drop(index=idx)
     dist = others.distance(geom)
     near = others[dist <= NEAR_M]
@@ -90,7 +84,6 @@ def compute(idx, buildings, evolution=None, evo_field=None):
     if ctx.get("niv_mediu") and niv:
         ind["fata_de_context"] = niv - ctx["niv_mediu"]
 
-    # Schimbări care se suprapun cu clădirea
     if evolution is not None and evo_field:
         e = evolution.to_crs(STEREO70)
         hit = e[e.intersects(geom)]
@@ -121,9 +114,7 @@ def summary_text(ind):
     return " ".join(parts)
 
 
-# ---------------------------------------------------------------- figuri
 def plan_figure(ind, dpi=170):
-    """Planul clădirii cu lungimile laturilor și colțurile numerotate (Stereo 70)."""
     plan = ind["plan_s70"]
     pts = np.array(plan.exterior.coords)
     fig, ax = plt.subplots(figsize=(6.5, 5.2), dpi=dpi)
@@ -160,7 +151,6 @@ def plan_figure(ind, dpi=170):
 
 
 def context_figure(ind, dpi=170):
-    """Clădirea în vecinătatea de 100 m, peste harta regimului de înălțime."""
     fig, ax = plt.subplots(figsize=(7, 6), dpi=dpi)
     ctx = ind["context"]["cladiri"]
     zone = gpd.GeoSeries([ind["context_zone"]], crs=4326).to_crs(STEREO70)
@@ -183,7 +173,6 @@ def context_figure(ind, dpi=170):
     return buf.getvalue()
 
 
-# ---------------------------------------------------------------- PDF
 def build_pdf(ind, title, ai_text=None, ai_sources=None):
     pdf = raport.Report(format="A4")
     pdf.zone_name = title
@@ -194,7 +183,6 @@ def build_pdf(ind, title, ai_text=None, ai_sources=None):
     pdf.add_font("DejaVu", "B", str(raport.FONT_DIR / "DejaVuSans-Bold.ttf"))
     pdf.alias_nb_pages()
 
-    # --- pagina 1: copertă + plan
     pdf.add_page()
     pdf.set_fill_color(31, 42, 77)
     pdf.rect(0, 0, 210, 34, "F")
@@ -236,7 +224,6 @@ def build_pdf(ind, title, ai_text=None, ai_sources=None):
     pdf.set_text_color(0)
     pdf.set_y(y + 24)
 
-    # --- pagina 2: caracteristici + coordonate
     pdf.add_page()
     pdf.h1("1. Caracteristicile construcției")
     rows = [("Destinație (tip OSM)", ind["tip"]),
@@ -265,7 +252,6 @@ def build_pdf(ind, title, ai_text=None, ai_sources=None):
              "Precizia este de ordinul metrilor; nu sunt coordonate măsurate topografic.",
              size=8.5)
 
-    # --- vecinătate
     pdf.add_page()
     pdf.h1(f"3. Vecinătatea (rază {CONTEXT_M} m)")
     pdf.image(io.BytesIO(context_figure(ind)), x=35, w=140)
@@ -284,7 +270,6 @@ def build_pdf(ind, title, ai_text=None, ai_sources=None):
                                            f"{fmt(abs(d), 1)} niveluri decât media"))
     pdf.table(rows, [90, 90])
 
-    # --- densificare
     pdf.h1("4. Densificare 2011–2024")
     if "evolutie" in ind:
         pdf.para(f"Schimbări din stratul de evoluție (câmpul „{ind['evolutie_camp']}”) care se "
@@ -298,11 +283,11 @@ def build_pdf(ind, title, ai_text=None, ai_sources=None):
 
     n = 5
     if ai_text:
-        pdf.h1(f"{n}. Interpretare asistată de AI")
+        pdf.h1(f"{n}. Interpretare automată")
         pdf.para(ai_text)
         if ai_sources:
             pdf.para("Documente consultate: " + ", ".join(sorted(set(ai_sources))), size=8)
-        pdf.para("Text generat automat de un model de limbaj; verificați concluziile.", size=8)
+        pdf.para("Text generat automat; verificați concluziile.", size=8)
         n += 1
     pdf.h1(f"{n}. Surse și limitări")
     pdf.para("Surse: OpenStreetMap (© contribuitorii OpenStreetMap, licență ODbL), prin "

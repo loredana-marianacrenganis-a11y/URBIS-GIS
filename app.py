@@ -1,12 +1,3 @@
-# app.py - URBIS GIS: platformă GIS-IA pentru managementul teritoriului și analiza
-# densificării urbane, cu validare pe municipiul Iași.
-# Contract 29CI/2026, cod PN-IV-P7-7.1-CI-2025-0106 (UEFISCDI, cec de inovare) · TUIASI × HURJUI & ASOCIAȚII S.R.L.
-#
-# Module (cererea de finanțare): M1 bază de date spațio-temporală · M2 import și validare ·
-# M3 hartă Web-GIS · M4 interogare spațială · M5 asistent GIS-IA cu RAG · M6 indicatori și
-# rapoarte · M7 mapathon · M8 administrare și jurnal · WP0 prezentarea proiectului.
-#
-# Rulare: streamlit run app.py   (sau dublu-clic pe porneste_platforma.bat)
 
 import io
 import os
@@ -22,16 +13,16 @@ from shapely.geometry import box
 
 st.set_page_config(page_title="URBIS GIS", page_icon="🏙️", layout="wide")
 
-import db  # noqa: E402
-import estimare  # noqa: E402
-import harta_inaltimi  # noqa: E402
-import cautare_web  # noqa: E402
-import osm  # noqa: E402
-import pagini_rapoarte as PR  # noqa: E402
-import raport  # noqa: E402
-import raport_cladire  # noqa: E402
-import swipe  # noqa: E402
-from common import (rag, read_layer, gpkg_layers, init_session, circle, area_ha,  # noqa: E402
+import db
+import estimare
+import harta_inaltimi
+import cautare_web
+import osm
+import pagini_rapoarte as PR
+import raport
+import raport_cladire
+import swipe
+from common import (rag, read_layer, gpkg_layers, init_session, circle, area_ha,
                     zone_polygon_from_file, show_sources, NAVY)
 
 db.init()
@@ -60,7 +51,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------- rol și jurnal (M8)
 def _demo_mode():
     return str(os.environ.get("URBIS_DEMO") or _secret("URBIS_DEMO") or "").strip().lower() in ("1", "true", "da", "yes")
 
@@ -99,14 +89,11 @@ def log(actiune, detalii="", t0=None):
 def header(title, module=None, subtitle=""):
     st.markdown(f"""<div class="urbis-bar"><div class="urbis-logo">U</div>
       <div style="display:flex;flex-direction:column"><b>URBIS GIS · {title}{f'<span class="tag">{module}</span>' if module else ''}</b>
-      <span>{subtitle or 'GIS-IA Iași · densificare urbană · TUIASI × Hurjui &amp; Asociații'}</span></div></div>""",
+      <span>{subtitle or 'GIS Iași · densificare urbană · TUIASI × Hurjui &amp; Asociații'}</span></div></div>""",
                 unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------- date (cache pe versiunea bazei)
 def _txt(df):
-    """Coloanele text cu valori amestecate (de ex. anul construcției: 1975 sau „1975-1980”) devin text,
-    altfel tabelul nu se poate afișa."""
     return df.assign(**{c: df[c].map(lambda x: "" if x is None or (isinstance(x, float) and x != x) else str(x))
                         for c in df.columns if df[c].dtype == object})
 
@@ -137,7 +124,7 @@ def compare_years(y1, y2, _ver):
 
 @st.cache_data(show_spinner=False)
 def doc_chunks(_ver_docs):
-    d = db.documents_rag()          # documentele cu date personale nu intră în index (GDPR)
+    d = db.documents_rag()
     out = []
     for r in d.itertuples():
         if r.text:
@@ -207,7 +194,6 @@ def pot_rgb(p):
     return [180, 72, 12, 190]
 
 
-# ================================================================ M3 · HARTĂ
 def page_harta():
     header("Hartă și căutare", "M3")
     ys = db.years()
@@ -344,7 +330,7 @@ def page_harta():
         fisa(st.session_state.get("sel_cod"), g, y2)
 
     st.divider()
-    st.markdown("##### 🤖 Asistent GIS-IA <span class='tag'>RAG · M5</span>", unsafe_allow_html=True)
+    st.markdown("##### 💬 Asistent GIS <span class='tag'>M5</span>", unsafe_allow_html=True)
     qa = st.chat_input("Întreabă despre construcții, indicatori sau reglementări…", key="dock_q")
     if qa:
         text, found = ask_assistant(qa)
@@ -355,7 +341,6 @@ def page_harta():
 
 
 def fisa(cod, g, year):
-    """Fișa construcției selectate: atribute, istoric, documente, raport, semnalare."""
     if not cod or cod not in set(g["cod_constructie"]):
         st.markdown("#### Fișa construcției")
         st.caption("Dă clic pe o construcție de pe hartă.")
@@ -412,7 +397,6 @@ def fisa(cod, g, year):
                 st.success("Observația a fost trimisă spre aprobare.")
 
 
-# ================================================================ M4 · INTEROGARE
 def page_interogare():
     header("Interogare spațială", "M4")
     ys = db.years()
@@ -494,7 +478,6 @@ def page_interogare():
                           .to_json().encode("utf-8"), "interogare_urbis.geojson", "application/geo+json")
 
 
-# ================================================================ M5 · AGENT WEB
 def page_cautare_web():
     cautare_web.render(header)
 
@@ -503,12 +486,11 @@ def page_swipe():
     swipe.render(header, db_version)
 
 
-# ================================================================ M5 · ASISTENT
 def page_asistent():
-    header("Asistent GIS-IA", "M5", "Răspunde din baza de date URBIS, documentele încărcate și documentația "
+    header("Asistent GIS", "M5", "Răspunde din baza de date URBIS, documentele încărcate și documentația "
                                     "tehnică a fluxului FLAIR-HUB2BF, cu sursa citată")
-    with st.expander("⚙️ Model de limbaj și protecția datelor", expanded=False):
-        opts = {"claude": "Claude (Anthropic, prin API)", "gemini": "Gemini (Google, cheie gratuită)", "ollama": "Model local (Ollama) – datele nu părăsesc calculatorul"}
+    with st.expander("⚙️ Setări și protecția datelor", expanded=False):
+        opts = {"claude": "Serviciu online (cheie API)", "gemini": "Serviciu online gratuit (cheie gratuită)", "ollama": "Local – datele nu părăsesc calculatorul"}
         cur = st.session_state.get("llm", rag.llm_provider())
         st.session_state.llm = st.radio("Model", list(opts), format_func=opts.get,
                                         index=list(opts).index(cur) if cur in opts else 0, horizontal=True)
@@ -517,8 +499,7 @@ def page_asistent():
             if models:
                 st.session_state.ollama_model = st.selectbox("Model local", models)
             else:
-                st.warning(f"Ollama nu răspunde la {rag.OLLAMA_URL}. Instalează-l de pe ollama.com, apoi "
-                           "rulează `ollama pull llama3.1`.")
+                st.warning(f"Varianta locală nu răspunde la {rag.OLLAMA_URL}. Verifică dacă este pornită pe acest calculator.")
         nd = db.documents()
         st.caption(f"Asistentul primește doar fragmentele relevante din documentele tehnice și un rezumat agregat al "
                    f"bazei de date (fără date despre persoane). Documente indexate: "
@@ -555,7 +536,6 @@ def page_asistent():
         st.session_state.messages.append({"role": "assistant", "content": text, "found": found})
 
 
-# ================================================================ M6 · INDICATORI
 def page_indicatori():
     header("Indicatori de densificare", "M6")
     ys = db.years()
@@ -624,7 +604,6 @@ def page_indicatori():
         st.success("Indicatorii au fost salvați.")
 
 
-# ================================================================ M6 · NECONCORDANȚE CADASTRALE
 def page_neconcordante():
     header("Neconcordanțe cadastrale", "M6", "Diferențe între acte și măsurători, suprapuneri, construcții peste "
                                              "limita imobilului sau fără imobil")
@@ -669,7 +648,6 @@ def page_neconcordante():
     st.caption("Rezultatul este informativ: semnalează situațiile de verificat, nu le corectează.")
 
 
-# ================================================================ M8 · VALORI DE REFERINȚĂ PENTRU IMPACT
 def page_impact():
     header("Valori de referință pentru impact", "M8", "Situația beneficiarului la finalul proiectului (2026), "
                                                        "de comparat cu 2027 în raportul de impact")
@@ -710,10 +688,9 @@ def page_impact():
                      width="stretch")
 
 
-# ================================================================ M6 · RAPOARTE
 def page_rapoarte():
     header("Rapoarte PDF", "M6", "Raport pe construcție sau pe zonă/parcelă, cu hartă, indicatori, "
-                                 "interpretare AI și surse")
+                                 "interpretare automată și surse")
     st.caption("Pentru construcțiile din baza de date URBIS, raportul se generează din fișa construcției "
                "(Hartă și căutare). Aici: rapoarte pe orice construcție sau zonă din Iași, din OpenStreetMap.")
     t1, t2 = st.tabs(["🏠 Pe construcție (clic pe hartă)", "📄 Pe zonă sau parcelă"])
@@ -723,7 +700,6 @@ def page_rapoarte():
         PR.page_zona()
 
 
-# ================================================================ M2 · IMPORT
 GUESS = {"niveluri": ["niveluri", "levels", "building:levels", "nr_niv", "etaje", "niv"],
          "tip": ["tip", "type", "building", "destinatie", "functiune"],
          "an_constructie": ["an_constructie", "an", "year", "start_date", "an_constr"],
@@ -751,7 +727,7 @@ def page_import():
         A[label="Sursă\\n(ortofoto, ANCPI,\\nprimărie, OSM, fișier)"];B[label="Citire\\nGPKG/SHP/DXF/\\nGeoJSON/KML"];
         C[label="Reproiectare\\nStereo 70"];D[label="Validare\\ngeometrii, duplicate,\\nsuprapuneri"];
         E[label="Potrivire cu versiunile\\nvalabile la anul datelor"];F[label="Versiuni + evenimente\\n(nouă, extinsă,\\ndemolată)",fillcolor="#FBE3D3"];
-        G[label="Hartă, indicatori,\\nasistent RAG"];A->B->C->D->E->F->G}""")
+        G[label="Hartă, indicatori,\\nasistent"];A->B->C->D->E->F->G}""")
     target = st.radio("Ce importi", ["Construcții", "Imobile (parcele)", "Zone (UTR, zonă pilot)",
                                      "Documente (normative, PUZ, CF)"], horizontal=True)
     if target.startswith("Documente"):
@@ -829,7 +805,7 @@ def page_import():
 
 
 def import_documents():
-    st.caption("Documentele intră în indexul asistentului RAG (M5). Exemplu: normativele de urbanism din "
+    st.caption("Documentele intră în indexul asistentului (M5). Exemplu: normativele de urbanism din "
                "domeniul XXIX al MDLPA (mdlpa.ro › Reglementări tehnice), PUZ/PUG, extrase CF.")
     ups = st.file_uploader("Documente (.pdf, .txt, .md)", type=["pdf", "txt", "md"], accept_multiple_files=True)
     tip = st.selectbox("Tip document", ["Normativ MDLPA", "PUG / PUZ", "Extras CF", "Autorizație de construire",
@@ -864,7 +840,6 @@ def import_documents():
         st.dataframe(d.drop(columns=["text"]), hide_index=True, width="stretch")
 
 
-# ================================================================ M1 · MODEL DE DATE
 def page_model():
     header("Model de date", "M1", "Baza de date spațio-temporală – livrabil WP1")
     st.markdown("Nicio construcție sau parcelă nu se suprascrie: fiecare modificare închide versiunea veche "
@@ -884,7 +859,6 @@ def page_model():
         c.download_button("⬇️ Copie a bazei de date (.sqlite)", db.DB_PATH.read_bytes(), "urbis.sqlite")
 
 
-# ================================================================ M7 · MAPATHON
 def page_mapathon():
     header("Mapathon", "M7", "Validarea construcțiilor cu niveluri estimate sau lipsă, de către studenți și experți")
     ys = db.years()
@@ -968,7 +942,6 @@ def page_mapathon():
                                "observatii_mapathon.csv", "text/csv")
 
 
-# ================================================================ M8 · JURNAL
 def page_jurnal():
     header("Jurnal și statistici", "M8", "Date pentru raportul de impact (Etapa 2)")
     if st.session_state.rol not in WRITE_ROLES:
@@ -995,7 +968,6 @@ def page_jurnal():
                        "jurnal_urbis.csv", "text/csv")
 
 
-# ================================================================ WP0 · DESPRE
 def page_despre():
     header("Despre proiect", "WP0")
     st.markdown("""
@@ -1015,7 +987,7 @@ def page_despre():
     st.markdown("#### Unde se vede fiecare livrabil")
     rows = [("WP1", "Model conceptual al bazei de date spațio-temporale", "Model de date (M1)", page_model),
             ("WP2", "Flux de lucru pentru integrarea datelor multisursă", "Import și validare (M2)", page_import),
-            ("WP3", "Arhitectură GIS-IA cu RAG", "Asistent GIS-IA (M5)", page_asistent),
+            ("WP3", "Arhitectură GIS cu asistent pe documente", "Asistent GIS (M5)", page_asistent),
             ("WP4", "Implementare și validare pe Iași", "Hartă (M3), Interogare (M4), Indicatori și rapoarte (M6), "
                                                        "Mapathon (M7)", page_harta),
             ("WP0", "Management, diseminare, raport de impact", "Jurnal (M8), această pagină", page_jurnal)]
@@ -1036,17 +1008,13 @@ _Acest proiect a fost finanțat printr-un grant al Ministerului Educației și C
 """)
 
 
-# ================================================================ navigare
-
-# ================================================================ VERSIUNE DEMONSTRATIVĂ (online)
 DEMO = str(os.environ.get("URBIS_DEMO") or _secret("URBIS_DEMO") or "").strip().lower() in ("1", "true", "da", "yes")
 DEMO_AREA = "Municipiul Iași (complet)"
-DEMO_START = "Centru – Copou"   # se încarcă prima; restul municipiului vine în fundal
+DEMO_START = "Centru – Copou"
 
 
 @st.cache_resource(show_spinner=False)
 def demo_progres():
-    """Starea încărcării în fundal (păstrată între rulările paginii)."""
     return {"total": 0, "gata": 0, "cladiri": 0, "erori": [], "terminat": False, "lipsa": 0}
 
 
@@ -1061,10 +1029,9 @@ def _demo_import_tile(bounds, sid):
 
 
 def _demo_rest(tiles, sid, prog):
-    """Descarcă restul municipiului pe bucăți (câte 2 în paralel) și le importă pe rând."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     rest = list(tiles)
-    for _ in range(2):                               # a doua trecere reia bucățile cu eroare
+    for _ in range(2):
         esuate = []
         with ThreadPoolExecutor(max_workers=2) as ex:
             fut = {ex.submit(osm.fetch_buildings, box(*t)): t for t in rest}
@@ -1078,7 +1045,7 @@ def _demo_rest(tiles, sid, prog):
                         prog["cladiri"] += db.import_buildings(g, 2024, sid, utilizator="demo",
                                                                inventar=True)["acceptate"]
                     prog["gata"] += 1
-                except Exception as e:  # serviciul OSM nu a răspuns pentru această bucată
+                except Exception as e:
                     esuate.append(fut[f])
                     prog["erori"].append(str(e)[:200])
         rest = esuate
@@ -1090,15 +1057,11 @@ def _demo_rest(tiles, sid, prog):
 
 @st.cache_resource(show_spinner=False)
 def demo_bootstrap():
-    """În modul demo, la prima pornire încarcă automat inventarul OpenStreetMap al municipiului
-    (date publice, ODbL): întâi zona centrală, ca platforma să pornească repede, apoi restul în fundal.
-    Nu se încarcă niciun fel de date cadastrale ale beneficiarului."""
     import threading
     if db.years():
         surse = db.read_sql("SELECT nume FROM sursa")["nume"].tolist()
         if f"OpenStreetMap – {DEMO_AREA}" in surse:
             return "existent"
-        # baza demo veche (altă zonă): o refacem de la zero; în demo nu există alte date
         db.DB_PATH.unlink(missing_ok=True)
         db.init()
     try:
@@ -1146,8 +1109,8 @@ pages = {
                            url_path="inaltimi"),
                    st.Page(page_swipe, title="Comparație cu swipe · M3", icon="↔️", url_path="swipe"),
                    st.Page(page_interogare, title="Interogare spațială · M4", icon="🔎", url_path="interogare"),
-                   st.Page(page_asistent, title="Asistent GIS-IA · M5", icon="🤖", url_path="asistent"),
-                   st.Page(page_cautare_web, title="Agent documentare web · M5", icon="🌐",
+                   st.Page(page_asistent, title="Asistent GIS · M5", icon="💬", url_path="asistent"),
+                   st.Page(page_cautare_web, title="Documentare web · M5", icon="🌐",
                            url_path="cautare-web")],
     "Analizează": [st.Page(page_indicatori, title="Indicatori densificare · M6", icon="📈", url_path="indicatori"),
                    st.Page(page_rapoarte, title="Rapoarte PDF · M6", icon="📄", url_path="rapoarte"),

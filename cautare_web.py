@@ -1,10 +1,3 @@
-# cautare_web.py - agent de căutare pe web pentru URBIS GIS
-#
-# Caută, pentru o zonă și o temă (de ex. „construcții noi Iași Copou”):
-#   - articole științifice în OpenAlex (gratuit, fără cheie; >250 milioane de lucrări);
-#   - știri de presă din Bună Ziua Iași (RSS public), cu Google News și GDELT ca rezervă; toate gratuite, fără cheie.
-# Apoi modelul de limbaj ales în platformă (Gemini gratuit, Claude sau Ollama) face o
-# sinteză în română, cu trimitere la fiecare sursă [1], [2] ... Fără model, se afișează lista.
 
 import re
 import time
@@ -21,7 +14,6 @@ UA = {"User-Agent": "URBIS-GIS/1.0 (TUIASI; cercetare)"}
 
 
 def _abstract(inv):
-    """OpenAlex dă rezumatul ca index inversat {cuvânt: [poziții]}."""
     if not inv:
         return ""
     pos = sorted((p, w) for w, ps in inv.items() for p in ps)
@@ -48,7 +40,7 @@ def articole(query, n=8, de_la=2015):
 def _gdelt(query, n, luni):
     params = {"query": query + " sourcelang:romanian", "mode": "ArtList", "format": "json",
               "maxrecords": n, "sort": "DateDesc", "timespan": f"{luni * 30}d"}
-    for incercare in range(2):  # GDELT cere cel mult o cerere la 5 secunde
+    for incercare in range(2):
         r = requests.get("https://api.gdeltproject.org/api/v2/doc/doc", headers=UA, timeout=30, params=params)
         if r.status_code == 429 and incercare == 0:
             time.sleep(6)
@@ -57,7 +49,7 @@ def _gdelt(query, n, luni):
         break
     try:
         arts = r.json().get("articles", [])
-    except ValueError:  # răspuns text simplu la interogări prea scurte
+    except ValueError:
         return []
     out = []
     for a in arts:
@@ -73,8 +65,6 @@ CUVINTE_TEMA = re.compile(r"demol|desfiin|construi|construc|bloc|autoriz|imobil|
 
 
 def _bzi(query, n, luni):
-    """Bună Ziua Iași (bzi.ro): flux RSS de căutare WordPress, filtrat pe temă și dată.
-    Presa locală e cea mai relevantă pentru construcții și demolări în Iași."""
     limita = datetime.now(timezone.utc) - timedelta(days=luni * 30)
     gasite = {}
     for tema in TEME_BZI:
@@ -102,7 +92,6 @@ def _bzi(query, n, luni):
 
 
 def _gnews(query, n, luni):
-    """Google News (RSS public, în română): acoperă bine presa locală."""
     r = requests.get("https://news.google.com/rss/search", headers={"User-Agent": "Mozilla/5.0"}, timeout=30,
                      params={"q": f"{query} when:{luni * 30}d", "hl": "ro", "gl": "RO", "ceid": "RO:ro"})
     r.raise_for_status()
@@ -151,8 +140,6 @@ def _llm(prompt, provider, ollama_model=None):
 
 
 def _cuvinte_en(intrebare, provider, ollama_model, zona=""):
-    """Literatura științifică e mai ales în engleză: cere modelului 3-6 cuvinte-cheie în engleză.
-    Fără model, folosește cuvinte-cheie implicite despre densificare + numele zonei."""
     try:
         t = _llm("Give 3-6 English search keywords (no quotes, space separated, nothing else) for "
                  f"finding scientific papers about: {intrebare}", provider, ollama_model)
@@ -167,7 +154,7 @@ def _cuvinte_en(intrebare, provider, ollama_model, zona=""):
 def sinteza(intrebare, rezultate, provider, ollama_model=None):
     lista = "\n".join(f"[{i}] ({r['tip']}, {r.get('data') or r['an']}, {r['sursa']}) {r['titlu']}. {r['text']}"
                       for i, r in enumerate(rezultate, 1))
-    prompt = ("Ești agentul de documentare al platformei URBIS GIS (cadastru și densificare urbană, Iași). "
+    prompt = ("Ești modulul de documentare al platformei URBIS GIS (cadastru și densificare urbană, Iași). "
               "Pe baza listei de surse de mai jos, scrie în română o sinteză scurtă (maximum 12 rânduri) "
               f"care răspunde la: „{intrebare}”. Separă ce spun articolele științifice de ce spune presa. "
               "După fiecare afirmație pune numărul sursei, de ex. [2]. Folosește doar informațiile din listă; "
@@ -176,7 +163,7 @@ def sinteza(intrebare, rezultate, provider, ollama_model=None):
 
 
 def render(header):
-    header("Agent de documentare web", "M5", "Caută articole științifice (OpenAlex) și presă (BZI, Google News) despre ce "
+    header("Documentare web", "M5", "Caută articole științifice (OpenAlex) și presă (BZI, Google News) despre ce "
                                               "s-a construit într-o zonă și face o sinteză cu sursele citate")
     with st.expander("📰 Context din presă și statistică: construcții și demolări în Iași (selecție)", expanded=True):
         st.markdown(
@@ -205,7 +192,7 @@ def render(header):
     provider = st.session_state.get("llm", rag.llm_provider())
     if not st.button("🔎 Caută", type="primary"):
         st.caption("Sursele sunt publice și gratuite. Întrebarea nu conține date din baza firmei; "
-                   "sinteza folosește modelul de limbaj ales la Asistent GIS-IA.")
+                   "sinteza folosește setarea aleasă la Asistent GIS.")
         return
     intrebare = f"{q} {zona}".strip()
     rez, erori = [], []
@@ -230,13 +217,12 @@ def render(header):
     try:
         text = sinteza(intrebare, rez, provider, st.session_state.get("ollama_model"))
     except Exception as e:
-        text, _ = None, st.warning(f"Modelul de limbaj nu a răspuns: {e}")
+        text, _ = None, st.warning(f"Sinteza automată nu a reușit: {e}")
     if text:
         st.markdown("#### Sinteză")
         st.markdown(text)
     else:
-        st.info("Fără model de limbaj configurat se afișează doar lista surselor "
-                "(adaugă GEMINI_API_KEY pentru sinteză gratuită).")
+        st.info("Fără cheie configurată se afișează doar lista surselor.")
     st.markdown("#### Surse")
     for i, r in enumerate(rez, 1):
         meta = " · ".join(x for x in [r["tip"], str(r.get("data") or r["an"] or ""), r["sursa"], r["autori"]] if x)

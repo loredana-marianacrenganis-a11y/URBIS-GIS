@@ -1,11 +1,3 @@
-# db.py - M1: baza de date spațio-temporală URBIS GIS (WP1)
-#
-# Implementare portabilă în SQLite (un singur fișier, merge local și pe găzduire gratuită);
-# aceeași schemă pentru PostgreSQL + PostGIS este în schema_postgis.sql.
-# Principiul spațio-temporal: nicio construcție nu se suprascrie. Fiecare modificare
-# închide versiunea veche (valid_pana_la) și deschide una nouă (valid_de_la), sub același
-# cod_constructie; fiecare schimbare e înregistrată ca eveniment, cu sursa ei.
-# Geometriile se păstrează în Stereo 70 (EPSG:3844), ca WKT.
 
 import json
 import sqlite3
@@ -72,7 +64,6 @@ CREATE TABLE IF NOT EXISTS jurnal (
   durata_ms INTEGER, detalii TEXT);
 """
 
-# Descrierea entităților (pentru ERD și pagina „Model de date”)
 ENTITIES = {
     "zona": ("Zonă / UAT", ["id PK", "nume", "tip (pilot, UTR, cartier)", "cod_siruta", "geom (poligon)"]),
     "imobil": ("Imobil (parcelă)", ["id PK", "cod_imobil", "nr_cadastral", "nr_cf", "suprafata_acte / masurata",
@@ -83,7 +74,7 @@ ENTITIES = {
                                                  "geom (poligon)", "valid_de_la, valid_pana_la", "sursa_id FK"]),
     "titular": ("Titular (anonimizat)", ["id PK", "cod_imobil FK", "tip (fizic/juridic)", "cota_parte"]),
     "document": ("Document", ["id PK", "cod_imobil FK", "cod_constructie FK", "tip (CF, PUZ, AC…)", "titlu", "data",
-                              "fisier", "text (pentru RAG)", "date_personale (exclus din RAG)"]),
+                              "fisier", "text (pentru căutare)", "date_personale (exclus din căutare)"]),
     "lucrare": ("Lucrare cadastrală", ["id PK", "cod_imobil FK", "tip", "client", "data", "stare", "operator"]),
     "eveniment": ("Eveniment / versiune", ["id PK", "ts", "entitate", "cod", "tip (creare, extindere, demolare…)",
                                            "an", "sursa_id FK", "detalii", "utilizator"]),
@@ -121,12 +112,11 @@ def init(path=None):
     with conn(path) as c:
         c.executescript(SCHEMA)
         cols = [r[1] for r in c.execute("PRAGMA table_info(document)")]
-        if "date_personale" not in cols:      # baze create cu versiuni anterioare
+        if "date_personale" not in cols:
             c.execute("ALTER TABLE document ADD COLUMN date_personale INTEGER DEFAULT 0")
 
 
 def erd_dot():
-    """Diagrama ERD (Graphviz DOT) a modelului de date – livrabil WP1."""
     lines = ['digraph ERD { rankdir=LR; graph [fontname="Helvetica", nodesep=0.4];',
              'node [shape=plaintext, fontname="Helvetica", fontsize=10]; edge [fontname="Helvetica", fontsize=9, color="#5B6680"];']
     for key, (title, fields) in ENTITIES.items():
@@ -140,7 +130,6 @@ def erd_dot():
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------- jurnal (M8)
 def log(actiune, rol="", detalii="", durata_ms=None, path=None):
     with conn(path) as c:
         c.execute("INSERT INTO jurnal(ts, actiune, rol, durata_ms, detalii) VALUES (?,?,?,?,?)",
@@ -152,7 +141,6 @@ def read_sql(q, params=(), path=None):
         return pd.read_sql_query(q, c, params=params)
 
 
-# ---------------------------------------------------------------- surse și zone
 def add_source(nume, tip, an=None, precizie=None, licenta=None, detalii=None, path=None):
     with conn(path) as c:
         cur = c.execute("INSERT INTO sursa(nume, tip, data_import, an_referinta, precizie, licenta, detalii) "
@@ -174,13 +162,11 @@ def zones(path=None):
     return gpd.GeoDataFrame(df, geometry=df["geom_wkt"].map(wkt.loads), crs=S70)
 
 
-# ---------------------------------------------------------------- construcții
 def _row_bbox(g):
     return g.bounds
 
 
 def buildings_at(year, bbox=None, path=None):
-    """Starea fondului construit la anul dat (versiunile valabile atunci)."""
     q = ("SELECT c.*, s.nume AS sursa FROM constructie c LEFT JOIN sursa s ON s.id=c.sursa_id "
          "WHERE c.valid_de_la<=? AND (c.valid_pana_la IS NULL OR c.valid_pana_la>?)")
     p = [year, year]
@@ -208,7 +194,6 @@ def history(cod, path=None):
 
 
 def compare(y1, y2, bbox=None, path=None):
-    """Clasifică fiecare construcție între doi ani: nouă, demolată, extinsă/modificată, neschimbată."""
     a = buildings_at(y1, bbox, path)
     b = buildings_at(y2, bbox, path)
     ida = dict(zip(a["cod_constructie"], a["id"]))
@@ -233,9 +218,6 @@ def compare(y1, y2, bbox=None, path=None):
     return out
 
 
-# Tipologia schimbărilor (după Bucher et al., 2025): legăturile dintre clădirile dispărute și
-# cele apărute între doi ani se grupează în componente conexe și se interpretează după
-# numărul de clădiri de fiecare parte.
 CHANGE_LABELS = {"neschimbată": "stabilitate", "extinsă": "extindere", "modificată": "modificare"}
 
 
@@ -245,8 +227,6 @@ def _significant(g1, g2, min_area, min_frac):
 
 
 def change_types(cmp, before=None, min_area=5.0, min_frac=0.1):
-    """Pentru fiecare rând din compare(): stabilitate, extindere, modificare, construcție,
-    demolare, înlocuire (1–1), divizare (1–n), fuziune (n–1) sau recompunere (m–n)."""
     res = pd.Series([CHANGE_LABELS.get(s, s) for s in cmp["schimbare"]], index=cmp.index, dtype=object)
     old = cmp[cmp["schimbare"] == "demolată"]
     new = cmp[cmp["schimbare"] == "nouă"]
@@ -281,8 +261,6 @@ def change_types(cmp, before=None, min_area=5.0, min_frac=0.1):
                "fuziune" if nn == 1 else "recompunere")
         for _, idx in nodes:
             res[idx] = lbl
-    # o clădire care își păstrează codul poate absorbi clădiri vecine (fuziune n–1) sau
-    # se poate împărți, o parte păstrând codul (divizare 1–n)
     keep = cmp[cmp["schimbare"].isin(["extinsă", "modificată", "neschimbată"])]
     if len(keep):
         kt = STRtree(keep.geometry.values)
@@ -332,8 +310,6 @@ def _clean(v):
 
 
 def validate(gdf):
-    """Validarea datelor la import (M2): geometrii, duplicate, suprapuneri. Întoarce
-    (gdf curat în Stereo 70, raport)."""
     rep = {"primite": len(gdf)}
     g = gdf.to_crs(S70).copy()
     g = g[g.geometry.notna() & ~g.geometry.is_empty]
@@ -349,7 +325,6 @@ def validate(gdf):
     dup = wk.duplicated()
     rep["duplicate"] = int(dup.sum())
     g = g[~dup].reset_index(drop=True)
-    # suprapuneri între clădiri (semnalate, nu eliminate)
     tree = STRtree(g.geometry.values)
     pairs = tree.query(g.geometry.values, predicate="intersects")
     n_ov = 0
@@ -364,11 +339,6 @@ def validate(gdf):
 
 
 def import_buildings(gdf, an, sursa_id, field_map=None, complete=False, utilizator="", path=None, inventar=None):
-    """Fluxul de import (M2/WP2): potrivește clădirile noi cu versiunile existente valabile
-    la anul `an` și creează versiuni și evenimente. complete=True: importul acoperă tot
-    perimetrul, deci clădirile existente care lipsesc din import sunt marcate demolate.
-    inventar=True: importul completează inventarul inițial pe o zonă nouă (de ex. pe bucăți), fără
-    potrivire cu clădirile deja existente."""
     fm = field_map or {}
     g, rep = validate(gdf)
     ext = g.total_bounds if len(g) else None
@@ -442,7 +412,6 @@ def import_buildings(gdf, an, sursa_id, field_map=None, complete=False, utilizat
 
 
 def import_parcels(gdf, an, sursa_id, field_map=None, utilizator="", path=None):
-    """Import de imobile (parcele): versiune nouă pe același nr. cadastral, dacă există."""
     fm = field_map or {}
     g, rep = validate(gdf)
     n_new = n_upd = 0
@@ -489,7 +458,6 @@ def find_parcel(nr, path=None):
     return gpd.GeoDataFrame(df.drop(columns="geom_wkt"), geometry=df["geom_wkt"].map(wkt.loads), crs=S70)
 
 
-# ---------------------------------------------------------------- validare (M7)
 def add_observation(cod, autor, niveluri, tip, exista, comentariu, lat, lon, path=None):
     with conn(path) as c:
         c.execute("INSERT INTO observatie(ts, cod_constructie, autor, niveluri_propuse, tip_propus, exista, "
@@ -498,8 +466,6 @@ def add_observation(cod, autor, niveluri, tip, exista, comentariu, lat, lon, pat
 
 
 def resolve_observation(obs_id, accept, utilizator, an, path=None):
-    """Acceptare: corectează versiunea curentă (niveluri, tip; sursa „mapathon”) sau o închide
-    dacă construcția nu există. Respingere: doar schimbă starea observației."""
     with conn(path) as c:
         o = c.execute("SELECT cod_constructie, niveluri_propuse, tip_propus, exista FROM observatie WHERE id=?",
                       (obs_id,)).fetchone()
@@ -514,8 +480,6 @@ def resolve_observation(obs_id, accept, utilizator, an, path=None):
         return
     old = cur.iloc[0]
     with conn(path) as c:
-        # O validare corectează o eroare de date, nu e o schimbare reală a construcției:
-        # se actualizează versiunea curentă, iar corectura rămâne în istoric ca eveniment.
         if not exista:
             c.execute("UPDATE constructie SET valid_pana_la=? WHERE id=?", (an, int(old["id"])))
             _event(c, "constructie", cod, "corectare", an, sid,
@@ -527,11 +491,8 @@ def resolve_observation(obs_id, accept, utilizator, an, path=None):
                f"niveluri {_clean(old['niveluri'])} → {niv}" + (f", tip {tip}" if tip else ""), utilizator)
 
 
-# ---------------------------------------------------------------- documente (RAG)
 def add_document(titlu, tip, text, cod_imobil=None, cod_constructie=None, fisier=None, date_personale=False,
                  path=None):
-    """date_personale=True: documentul (ex. extras CF cu nume) se păstrează în baza de date,
-    dar NU intră în indexul asistentului RAG, deci nu ajunge la modelul de limbaj."""
     with conn(path) as c:
         c.execute("INSERT INTO document(cod_imobil, cod_constructie, tip, titlu, data, fisier, text, date_personale) "
                   "VALUES (?,?,?,?,?,?,?,?)", (cod_imobil, cod_constructie, tip, titlu, now()[:10], fisier, text,
@@ -539,7 +500,6 @@ def add_document(titlu, tip, text, cod_imobil=None, cod_constructie=None, fisier
 
 
 def db_summary(path=None):
-    """Rezumat al bazei, folosit de asistentul RAG ca sursă [Baza de date URBIS]."""
     ys = years(path)
     if not ys:
         return "Baza de date URBIS nu conține încă nicio construcție importată."
@@ -570,16 +530,11 @@ def documents(path=None):
 
 
 def documents_rag(path=None):
-    """Documentele care pot intra în indexul asistentului (fără date personale)."""
     d = documents(path)
     return d[d["date_personale"] == 0]
 
 
-# ---------------------------------------------------------------- neconcordanțe cadastrale
 def inconsistencies(year, tol_pct=5.0, path=None):
-    """Neconcordanțe între datele cadastrale și construcții la anul dat:
-    diferențe între suprafața din acte și cea măsurată, suprapuneri de imobile,
-    construcții care depășesc limita imobilului și construcții fără imobil (în zona acoperită)."""
     P = parcels_at(year, path)
     rows = []
     if P.empty:
@@ -615,7 +570,6 @@ def inconsistencies(year, tol_pct=5.0, path=None):
                             geometry="geometry", crs=S70)
 
 
-# ---------------------------------------------------------------- valori de referință (impact)
 IMPACT_INDICATORS = [
     ("Timpul mediu pentru o lucrare cadastrală (colectare și integrare date)", "ore", "R2: −30%"),
     ("Numărul de lucrări realizate pe an", "lucrări", "R1: creștere"),

@@ -1,6 +1,3 @@
-# swipe.py - hartă de comparație cu bară glisantă (swipe): în stânga și în dreapta barei se pot
-# alege imagini satelitare din ani diferiți (Esri World Imagery Wayback, din 2014) sau harta OSM,
-# iar peste ele clădirile din baza URBIS pentru anul ales pe fiecare parte.
 
 import json
 
@@ -11,7 +8,6 @@ from shapely.geometry import box, mapping
 import db
 import harta_inaltimi
 
-# ediții Wayback folosite dacă lista completă nu se poate încărca în browser
 WAYBACK_REZERVA = [(10, "2014-02-20"), (577, "2017-01-11"), (119, "2020-10-14"), (12428, "2024-06-06")]
 
 
@@ -23,7 +19,6 @@ def _round(o, nd=6):
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def cladiri_geojson(an, bounds, _ver):
-    """Clădirile valabile în anul `an` din dreptunghiul zonei (WGS84), ca GeoJSON compact."""
     g = db.buildings_at(an)
     if g.empty:
         return {"type": "FeatureCollection", "features": []}
@@ -111,7 +106,6 @@ function fillSelects(defL, defR) {
     setTile(p, sel.value);
   }
 }
-// clădirile pe fiecare parte (fiecare în panoul ei, cu randare proprie, ca să poată fi tăiată de bară)
 const esc = v => String(v).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 function levelColor(n) {
   if (!n) return '#ffd400';
@@ -127,7 +121,6 @@ for (const p of ['L', 'R']) {
       (f.properties.n ? ' · ' + (f.properties.n === 1 ? 'P' : 'P+' + (f.properties.n - 1)) : ''), {sticky: true})
   }).addTo(map);
 }
-// bara de swipe
 let ratio = 0.5;
 const wrap = document.getElementById('wrap'), bar = document.getElementById('bar');
 function clip() {
@@ -150,7 +143,6 @@ bar.addEventListener('pointerdown', e => { drag = true; map.dragging.disable(); 
 bar.addEventListener('pointermove', e => { if (drag) setFromEvent(e); });
 bar.addEventListener('pointerup', () => { drag = false; map.dragging.enable(); });
 map.on('move zoom resize', clip);
-// lista completă a edițiilor Wayback (publică); dacă nu se încarcă, se folosesc câteva ediții fixe
 fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json')
   .then(r => r.json())
   .then(j => {
@@ -187,7 +179,6 @@ def render(header, db_version):
                 years[p] = y
     cfg = {"bounds": list(bounds), "data": data, "years": years, "fill": fill, "fallback": WAYBACK_REZERVA}
     height = 620
-    # datele OSM sunt editate public: „</” se neutralizează ca să nu poată închide blocul <script>
     page = HTML.replace("__CFG__", json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/")).replace("__H__", str(height))
     if hasattr(st, "iframe"):
         st.iframe(page, height=height + 6)

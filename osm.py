@@ -1,5 +1,3 @@
-# osm.py - date publice deschise: clădiri OpenStreetMap (Overpass) și căutare
-# de adrese (Nominatim). Datele OSM © contribuitorii OpenStreetMap, licență ODbL.
 
 import time
 
@@ -10,18 +8,16 @@ from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 
 OVERPASS = "https://overpass-api.de/api/interpreter"
-# servere Overpass de rezervă (aceleași date OSM), folosite dacă serverul principal e ocupat
 OVERPASS_MIRRORS = [OVERPASS, "https://overpass.kumi.systems/api/interpreter",
                     "https://overpass.private.coffee/api/interpreter"]
-TILE_DEG = 0.06   # zonele mai mari decât ~0,06° se descarcă pe bucăți (Overpass refuză cererile prea mari)
+TILE_DEG = 0.06
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 HEADERS = {"User-Agent": "urbis-gis/1.0 (proiect de cercetare)"}
 
-IASI_VIEWBOX = "27.45,47.25,27.72,47.08"   # limitează căutarea la zona Iașiului
+IASI_VIEWBOX = "27.45,47.25,27.72,47.08"
 
 
 def geocode(query, limit=5):
-    """Caută o adresă în Iași. Întoarce listă de (nume, lat, lon)."""
     r = requests.get(NOMINATIM, headers=HEADERS, timeout=20, params={
         "q": query, "format": "json", "limit": limit, "countrycodes": "ro",
         "viewbox": IASI_VIEWBOX, "bounded": 1, "accept-language": "ro"})
@@ -34,7 +30,6 @@ def _ring(geom):
 
 
 def _to_polygon(el):
-    """Transformă un element Overpass (way/relation cu 'out geom') în poligon."""
     if el["type"] == "way" and len(el.get("geometry", [])) >= 4:
         poly = Polygon(_ring(el["geometry"]))
         return poly if poly.is_valid else poly.buffer(0)
@@ -75,8 +70,6 @@ def parse_overpass(data):
 
 
 def _post_overpass(q, start=0):
-    """Trimite o interogare Overpass; la refuz (429/504) sau eroare reîncearcă pe serverele de rezervă.
-    `start` alege serverul de la care se începe (bucățile paralele pornesc de pe servere diferite)."""
     erori = []
     ordine = OVERPASS_MIRRORS[start % len(OVERPASS_MIRRORS):] + OVERPASS_MIRRORS[:start % len(OVERPASS_MIRRORS)]
     for incercare, url in enumerate(ordine * 2):
@@ -86,7 +79,7 @@ def _post_overpass(q, start=0):
                 raise requests.HTTPError(f"HTTP {r.status_code}")
             r.raise_for_status()
             return r.json()
-        except Exception as e:  # rețea, timp depășit, server ocupat, răspuns invalid
+        except Exception as e:
             erori.append(f"{url.split('/')[2]}: {e}")
             time.sleep(3 + 2 * incercare)
     raise RuntimeError("Overpass indisponibil (" + "; ".join(erori[-3:]) + ")")
@@ -101,8 +94,6 @@ def _tiles(minx, miny, maxx, maxy, step=TILE_DEG):
 
 
 def fetch_buildings(zone_wgs84):
-    """Descarcă clădirile OSM din dreptunghiul zonei și le taie la limita zonei.
-    Zonele mari (de ex. tot municipiul) se descarcă pe bucăți, apoi se elimină dublurile."""
     from concurrent.futures import ThreadPoolExecutor
 
     tiles = _tiles(*zone_wgs84.bounds)
@@ -116,19 +107,15 @@ def fetch_buildings(zone_wgs84):
         print(f"[osm] bucata {i + 1}/{len(tiles)}: {len(g)} cladiri in {time.time() - t0:.0f} s", flush=True)
         return g
 
-    # serverul principal e cel mai rapid și acceptă 2 cereri simultane de la același utilizator;
-    # serverele de rezervă preiau doar bucățile la care apare o eroare
     with ThreadPoolExecutor(max_workers=min(2, len(tiles))) as ex:
         parts = [g for g in ex.map(one, enumerate(tiles)) if not g.empty]
     if not parts:
         return parse_overpass({})
     gdf = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), geometry="geometry", crs=4326)
-    gdf = gdf.drop_duplicates("osm_id").reset_index(drop=True)   # clădirile de la marginea bucăților
-    # păstrăm clădirile al căror centru e în zonă (nu tăiem clădirile pe jumătate)
+    gdf = gdf.drop_duplicates("osm_id").reset_index(drop=True)
     return gdf[gdf.geometry.representative_point().within(zone_wgs84)].reset_index(drop=True)
 
 
-# ---------------------------------------------------------------- străzi și puncte de interes
 ROAD_TYPES = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
               "service", "living_street", "pedestrian"]
 POI_TAGS = {"amenity": ["school", "kindergarten", "university", "college", "hospital", "clinic", "doctors",
@@ -145,7 +132,6 @@ def _overpass(q):
 
 
 def fetch_roads(zone_wgs84):
-    """Rețeaua stradală OSM din zonă (linii), cu tipul și numele străzii."""
     from shapely.geometry import LineString
     minx, miny, maxx, maxy = zone_wgs84.bounds
     rx = "|".join(ROAD_TYPES)
@@ -164,7 +150,6 @@ def fetch_roads(zone_wgs84):
 
 
 def fetch_poi(zone_wgs84):
-    """Puncte de interes OSM (școli, spitale, servicii publice) din zonă."""
     from shapely.geometry import Point
     minx, miny, maxx, maxy = zone_wgs84.bounds
     vals = "|".join(POI_TAGS["amenity"])

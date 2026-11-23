@@ -1,5 +1,3 @@
-# harta_inaltimi.py - harta tuturor construcțiilor din Iași colorate după înălțime
-# (în stilul hartablocuri.ro/inaltime), 2D sau 3D, cu filtre, statistici și export Excel.
 
 import colorsys
 import io
@@ -14,7 +12,6 @@ import estimare
 import osm
 import raport
 
-# Municipiul Iași (dreptunghi încadrator) și cartiere pentru încărcare parțială
 AREAS = {
     "Municipiul Iași (complet)": (27.500, 47.115, 27.670, 47.215),
     "Centru – Copou": (27.555, 47.155, 27.600, 47.190),
@@ -30,11 +27,9 @@ UNKNOWN_RGB = [245, 245, 245]
 
 
 def level_rgb(n):
-    """Roșu (1 nivel) → galben (5) → verde → albastru → magenta (27+), ca la HartaBlocuri."""
     if not n or pd.isna(n):
         return UNKNOWN_RGB
     n = min(int(n), MAX_LEVEL)
-    # 1 → roșu (0°), 5 → galben (60°), 27 → magenta (300°)
     hue = 60 * (n - 1) / 4 if n <= 5 else 60 + 240 * (n - 5) / (MAX_LEVEL - 5)
     r, g, b = colorsys.hsv_to_rgb(hue / 360, 0.75, 1.0)
     return [int(r * 255), int(g * 255), int(b * 255)]
@@ -75,7 +70,6 @@ def to_deck_rows(gdf):
         est = niv is not None and pd.isna(r.niv)
         rows.append({
             "polygon": [list(c) for c in g.exterior.coords],
-            # estimările: aceeași culoare, dar estompată
             "color": level_rgb(niv) + [120 if est else 235],
             "elev": (niv or 1) * 3.0,
             "tip": r.tip_ro,
@@ -178,7 +172,6 @@ def render():
     gdf = gdf.copy()
     gdf["niv_afis"] = gdf["niv_final"] if use_est else gdf["niv"]
 
-    # --- filtre
     f1, f2, f3 = st.columns([1.3, 1, 1])
     lo, hi = f1.slider("Niveluri", 1, MAX_LEVEL, (1, MAX_LEVEL), key="hi_lv")
     unknown = f1.checkbox("Include construcțiile cu înălțime necunoscută", True, key="hi_unk")
@@ -204,7 +197,6 @@ def render():
     k[2].metric("Nivel mediu", f"{sel.loc[known, 'niv_afis'].mean():.1f}" if known.any() else "–")
     k[3].metric("Cea mai înaltă", f"{int(sel['niv_afis'].max())} niveluri" if known.any() else "–")
 
-    # --- hartă
     center = (47.165, 27.585, 13)
     if q:
         try:
@@ -230,7 +222,6 @@ def render():
                "construcției nu sunt completate pentru toate clădirile; harta nu e completă "
                "și poate conține erori.")
 
-    # --- statistici + export
     st.markdown("#### Construcții după număr de niveluri și perioada construcției")
     stats = stats_table(sel)
     st.dataframe(stats, width="stretch")
