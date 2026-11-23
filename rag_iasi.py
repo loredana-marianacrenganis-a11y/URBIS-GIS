@@ -178,6 +178,7 @@ def llm_provider():
 GEMINI_MODEL = os.environ.get("URBIS_GEMINI_MODEL", "gemini-flash-latest")
 GEMINI_REZERVE = [m.strip() for m in os.environ.get(
     "URBIS_GEMINI_REZERVE", "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.6-flash").split(",") if m.strip()]
+GEMINI_TERMEN = int(os.environ.get("URBIS_GEMINI_TERMEN", "50"))
 _pauza_model = {}
 _cache_raspunsuri = {}
 
@@ -213,22 +214,39 @@ def _ask_gemini(prompt):
     if not disponibile:
         raise ServiciuOcupat("limita", min(_pauza_model[m] for m in modele) - acum)
     tip, asteapta, detalii = "indisponibil", 30, ""
+    termen = time.time() + GEMINI_TERMEN
     for m in disponibile:
-        for incercare in range(2):
+        gandire = True
+        for incercare in range(3):
+            ramas = termen - time.time()
+            if ramas < 5:
+                break
+            cfg = {"temperature": 0.1, "maxOutputTokens": 4096}
+            if gandire:
+                cfg["thinkingConfig"] = {"thinkingLevel": "low"}
             try:
                 r = requests.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent",
                     headers={"x-goog-api-key": gemini_key(), "Content-Type": "application/json"},
-                    json={"contents": [{"parts": [{"text": prompt}]}],
-                          "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800}},
-                    timeout=60)
+                    json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": cfg},
+                    timeout=min(35, ramas))
+            except requests.Timeout:
+                _pauza_model[m] = time.time() + 60
+                detalii = f"{m}: fără răspuns în timp util"
+                break
             except requests.RequestException as e:
                 detalii = str(e)[:200]
                 break
+            if r.status_code == 400 and gandire:
+                gandire = False
+                continue
             if r.status_code == 200:
                 try:
-                    parts = r.json()["candidates"][0]["content"]["parts"]
-                    text = "".join(p.get("text", "") for p in parts).strip()
+                    cand = r.json()["candidates"][0]
+                    parts = (cand.get("content") or {}).get("parts") or []
+                    text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+                    if text and cand.get("finishReason") == "MAX_TOKENS":
+                        text += " […]"
                 except Exception:
                     text = ""
                 if text:
@@ -245,7 +263,7 @@ def _ask_gemini(prompt):
                 _pauza_model[m] = time.time() + w
                 tip, asteapta, detalii = "limita", w, f"{m}: HTTP 429"
                 break
-            if r.status_code in (500, 502, 503, 504) and incercare == 0:
+            if r.status_code in (500, 502, 503, 504) and incercare == 0 and termen - time.time() > 15:
                 time.sleep(1.5)
                 continue
             if r.status_code in (500, 502, 503, 504):
