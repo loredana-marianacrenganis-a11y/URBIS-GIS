@@ -143,6 +143,25 @@ code{background:#eef2f7;border-radius:5px;padding:1px 5px;font-size:12.5px}
 .idtable td:first-child{color:var(--muted);width:150px}
 .cat-list{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:start}
 
+#v-grafice .wrap{max-width:1240px}
+.gbar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.gbar .ctl{min-width:230px;flex:1 1 230px}
+.gbar .meta{color:var(--muted);font-size:12.5px;flex:2 1 260px;align-self:center}
+.gkpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.gkpis .kpi{background:var(--panel)}
+.ggrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,470px),1fr));gap:16px}
+.gcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.gcard h2{font-size:16px}
+.gcard p{margin:0;color:var(--muted);font-size:12.5px}
+.gcard.wide{grid-column:1/-1}
+.chartbox{position:relative;height:290px;min-width:0}
+.chartbox.tall{height:460px}
+.donuts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.donuts>div{min-width:0}
+.donuts .chartbox{height:250px}
+.donuts h3{font:600 13px var(--f-body);text-align:center;color:var(--muted)}
+.glink{font-weight:600;font-size:13px}
+
 @media (max-width:860px){
   #v-harta{display:flex;flex-direction:column}
   .mapwrap{height:62vh;flex:none;order:1}
@@ -160,6 +179,7 @@ code{background:#eef2f7;border-radius:5px;padding:1px 5px;font-size:12.5px}
   <a class="brand" href="#harta"><span class="mark">U</span><span><b>Iași 2011 → 2024</b><small>URBIS GIS · TUIASI</small></span></a>
   <nav aria-label="Secțiuni">
     <a href="#harta" data-v="harta">Hartă</a>
+    <a href="#grafice" data-v="grafice">Grafice</a>
     <a href="#cartiere" data-v="cartiere">Cartiere</a>
     <a href="#incarca" data-v="incarca">Încarcă date</a>
     <a href="#despre" data-v="despre">Despre</a>
@@ -186,6 +206,8 @@ code{background:#eef2f7;border-radius:5px;padding:1px 5px;font-size:12.5px}
       <div class="kpi"><span class="v" id="k-rec">–</span><span class="l"><i class="dot" style="background:var(--c-rec)"></i>Reconstruite</span></div>
       <div class="kpi"><span class="v" id="k-ext">–</span><span class="l"><i class="dot" style="background:var(--c-ext)"></i>Extinse sau supraetajate</span></div>
     </div>
+
+    <a class="glink" href="#grafice" id="toGrafice" hidden>Vezi graficele pentru această zonă →</a>
 
     <div class="surface">
       <div class="eyebrow">Suprafață construită la sol</div>
@@ -233,6 +255,66 @@ code{background:#eef2f7;border-radius:5px;padding:1px 5px;font-size:12.5px}
     <div class="yr" id="yrL">2011<small>clădiri existente</small></div>
     <div class="yr" id="yrR">2024<small>clădiri existente</small></div>
     <div id="hoverlab" hidden></div>
+  </div>
+</section>
+
+<section class="view page" id="v-grafice" hidden>
+  <div class="wrap">
+    <header class="h">
+      <div class="eyebrow">Tablou de bord</div>
+      <h1>Densificare, demolare și reconstrucție în grafice</h1>
+      <p>Graficele se actualizează după zona aleasă: tot orașul, un cartier sau ce se vede acum pe hartă. Apasă pe un cartier din graficele pe cartiere ca să-l alegi.</p>
+    </header>
+    <div class="gbar">
+      <div class="ctl"><label for="gSel">Zona</label><select id="gSel"><option value="-1">Tot orașul</option><option value="view">Zona vizibilă pe hartă</option></select></div>
+      <div class="meta" id="gMeta"></div>
+      <a class="btn ghost" href="#harta" id="gToMap">Arată pe hartă</a>
+    </div>
+    <div id="gEmpty" class="empty" hidden>Graficele apar după ce sunt încărcate straturile 2011 și 2024. <a href="#incarca">Încarcă datele</a></div>
+    <div id="gBody" hidden>
+      <div class="gkpis">
+        <div class="kpi"><span class="v" id="g-na">–</span><span class="l">Clădiri 2011</span></div>
+        <div class="kpi"><span class="v" id="g-nb">–</span><span class="l">Clădiri 2024</span></div>
+        <div class="kpi"><span class="v" id="g-sa">–</span><span class="l">Construit la sol 2011</span></div>
+        <div class="kpi"><span class="v" id="g-sb">–</span><span class="l">Construit la sol 2024</span></div>
+        <div class="kpi"><span class="v" id="g-d">–</span><span class="l">Variație</span></div>
+      </div>
+      <div class="ggrid" style="margin-top:16px">
+        <div class="gcard wide">
+          <h2>De unde vine variația suprafeței construite</h2>
+          <p>Cât s-a pierdut prin demolări și înlocuiri și cât s-a câștigat prin construcții noi, reconstrucții și extinderi; ultima bară este variația netă 2011 → 2024.</p>
+          <div class="chartbox"><canvas id="chWater" role="img" aria-label="Bilanțul suprafeței construite 2011–2024"></canvas></div>
+        </div>
+        <div class="gcard">
+          <h2>Ce s-a întâmplat cu clădirile</h2>
+          <p>Numărul de clădiri pe categorii de schimbare.</p>
+          <div class="donuts">
+            <div><h3>2024</h3><div class="chartbox"><canvas id="chDonB" role="img" aria-label="Clădirile din 2024 pe categorii"></canvas></div></div>
+            <div><h3>2011</h3><div class="chartbox"><canvas id="chDonA" role="img" aria-label="Clădirile din 2011 pe categorii"></canvas></div></div>
+          </div>
+        </div>
+        <div class="gcard">
+          <h2>Regimul de înălțime</h2>
+          <p id="lvNote">Numărul de clădiri după numărul de niveluri, în 2011 și în 2024.</p>
+          <div class="chartbox"><canvas id="chLev" role="img" aria-label="Regimul de înălțime 2011 și 2024"></canvas></div>
+        </div>
+        <div class="gcard">
+          <h2>Construcții noi și demolări pe cartiere</h2>
+          <p>Spre dreapta: clădiri noi și reconstruite. Spre stânga: clădiri demolate și înlocuite.</p>
+          <div class="chartbox tall"><canvas id="chNewDem" role="img" aria-label="Construcții noi și demolări pe cartiere"></canvas></div>
+        </div>
+        <div class="gcard">
+          <h2>Densificare pe cartiere</h2>
+          <p>Variația suprafeței construite la sol între 2011 și 2024, în procente.</p>
+          <div class="chartbox tall"><canvas id="chVar" role="img" aria-label="Variația suprafeței construite pe cartiere"></canvas></div>
+        </div>
+        <div class="gcard wide">
+          <h2>Suprafață construită la sol pe cartiere</h2>
+          <p>Hectare ocupate de clădiri în 2011 și în 2024.</p>
+          <div class="chartbox tall"><canvas id="chArea" role="img" aria-label="Suprafață construită pe cartiere, 2011 și 2024"></canvas></div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -365,6 +447,7 @@ code{background:#eef2f7;border-radius:5px;padding:1px 5px;font-size:12.5px}
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatbush@4.4.0/flatbush.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script>
 "use strict";
 const BOUNDS = [[27.4766, 47.105], [27.6965, 47.2102]];
@@ -398,10 +481,11 @@ let zona = -1;
 
 function route() {
   const v = (location.hash || "#harta").slice(1);
-  const ok = ["harta", "cartiere", "incarca", "despre"].includes(v) ? v : "harta";
+  const ok = ["harta", "grafice", "cartiere", "incarca", "despre"].includes(v) ? v : "harta";
   document.querySelectorAll("section.view").forEach(s => s.hidden = s.id !== "v-" + ok);
   document.querySelectorAll("nav a").forEach(a => { if (a.dataset.v === ok) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (ok === "harta" && maps.L) { maps.L.resize(); maps.R.resize(); }
+  if (ok === "grafice") renderGrafice();
 }
 window.addEventListener("hashchange", route);
 
@@ -553,7 +637,9 @@ function renderStats() {
   for (const k of [0, 1, 2, 3, 4]) { const e = $("#n-b" + k); if (e) e.textContent = has ? fmt(s.b[k]) : ""; }
   for (const k of [0, 1, 2]) { const e = $("#n-a" + k); if (e) e.textContent = has ? fmt(s.a[k]) : ""; }
   $("#zonaEyebrow").textContent = CART.features[zona] ? CART.features[zona].properties.nume : "Tot orașul";
+  $("#toGrafice").hidden = !has;
   renderCartiere();
+  if (!$("#v-grafice").hidden) renderGrafice();
 }
 let sortKey = "var", sortDir = -1;
 function renderCartiere() {
@@ -584,6 +670,7 @@ $("#cartBody").addEventListener("click", e => {
 });
 function setZona(z) {
   zona = CART.features[z] ? z : -1; z = zona; $("#selCartier").value = String(z);
+  gMode = String(z);
   applyFilters(); renderStats();
   if (!maps.L) return;
   if (z < 0) { maps.L.fitBounds(BOUNDS, {padding: 20}); return; }
@@ -594,8 +681,145 @@ function setZona(z) {
 }
 $("#selCartier").onchange = e => setZona(+e.target.value);
 
+let gMode = "-1";
+const CH = {};
+const LEV = [["P", 1, 1], ["P+1…P+2", 2, 3], ["P+3…P+4", 4, 5], ["P+5…P+8", 6, 9], ["P+9 și peste", 10, 999]];
+const XY = new WeakMap();
+function gPred() {
+  if (gMode === "view" && maps.R) {
+    const b = maps.R.getBounds(), w = b.getWest(), e = b.getEast(), so = b.getSouth(), n = b.getNorth();
+    return L => { const p = XY.get(L); return i => p.x[i] >= w && p.x[i] <= e && p.y[i] >= so && p.y[i] <= n; };
+  }
+  const z = +gMode;
+  return z >= 0 ? L => i => L.z[i] === z : () => () => true;
+}
+function gStats(pred) {
+  const r = {na: 0, nb: 0, sa: 0, sb: 0, a: [0, 0, 0], b: [0, 0, 0, 0, 0], sA: [0, 0, 0], sB: [0, 0, 0, 0, 0], ext: 0,
+             la: new Array(LEV.length + 1).fill(0), lb: new Array(LEV.length + 1).fill(0)};
+  const A = DATA.a, B = DATA.b, pa = pred(A), pb = pred(B);
+  const lc = n => { if (!(n > 0)) return LEV.length; for (let k = 0; k < LEV.length; k++) if (n >= LEV[k][1] && n <= LEV[k][2]) return k; return LEV.length - 1; };
+  for (let i = 0; i < A.c.length; i++) if (pa(i)) { r.na++; r.sa += A.s[i]; r.a[A.c[i]]++; r.sA[A.c[i]] += A.s[i]; r.la[lc(A.n[i])]++; }
+  for (let i = 0; i < B.c.length; i++) if (pb(i)) { r.nb++; r.sb += B.s[i]; r.b[B.c[i]]++; r.sB[B.c[i]] += B.s[i]; r.lb[lc(B.n[i])]++;
+    if (B.c[i] === 3) r.ext += B.s[i] - (B.ps[i] || 0); }
+  return r;
+}
+function cartRows() {
+  return CART.features.map((f, i) => { const s = gStats(L => k => L.z[k] === i);
+    return {i, nume: f.properties.nume, noi: s.b[1] + s.b[2], dem: s.a[1] + s.a[2], nouaS: s.b[1], recS: s.b[2], demS: s.a[1], inlS: s.a[2],
+            sa: s.sa / 10000, sb: s.sb / 10000, v: s.sa > 0 ? (s.sb - s.sa) / s.sa * 100 : 0}; });
+}
+const nf = (v, d = 0) => Number(v).toLocaleString("ro-RO", {maximumFractionDigits: d, minimumFractionDigits: d});
+function mkChart(id, cfg) {
+  if (CH[id]) CH[id].destroy();
+  const el = document.getElementById(id); if (!el || !window.Chart) return null;
+  CH[id] = new Chart(el, cfg); return CH[id];
+}
+function gDefaults() {
+  if (!window.Chart || gDefaults.done) return; gDefaults.done = true;
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 12; Chart.defaults.color = "#5a6b82"; Chart.defaults.borderColor = "#e4eaf2";
+  Chart.defaults.plugins.legend.labels.boxWidth = 12; Chart.defaults.plugins.legend.labels.boxHeight = 12;
+  Chart.defaults.maintainAspectRatio = false;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) Chart.defaults.animation = false;
+}
+function renderGrafice() {
+  const has = !!DATA;
+  $("#gEmpty").hidden = has; $("#gBody").hidden = !has;
+  const sel = $("#gSel");
+  if (sel.options.length < CART.features.length + 2) {
+    CART.features.map((f, i) => [f.properties.nume, i]).sort((x, y) => x[0].localeCompare(y[0], "ro"))
+      .forEach(([n, i]) => { const o = document.createElement("option"); o.value = i; o.textContent = n; sel.appendChild(o); });
+  }
+  sel.value = gMode;
+  if (!has) return;
+  if (!window.Chart) { $("#gMeta").textContent = "Biblioteca de grafice nu s-a putut încărca; verifică conexiunea la internet."; return; }
+  gDefaults();
+  const s = gStats(gPred());
+  const zname = gMode === "view" ? "zona vizibilă pe hartă" : CART.features[+gMode] ? CART.features[+gMode].properties.nume : "tot orașul";
+  $("#gMeta").textContent = `${fmt(s.na)} clădiri în 2011 și ${fmt(s.nb)} în 2024 în ${zname}.`;
+  $("#g-na").textContent = fmt(s.na); $("#g-nb").textContent = fmt(s.nb);
+  $("#g-sa").textContent = ha(s.sa) + " ha"; $("#g-sb").textContent = ha(s.sb) + " ha";
+  const d = s.sa > 0 ? (s.sb - s.sa) / s.sa * 100 : null, gd = $("#g-d");
+  gd.textContent = d == null ? "–" : (d >= 0 ? "+" : "") + nf(d, 1) + "%"; gd.style.color = d == null ? "" : d >= 0 ? "var(--c-noua)" : "var(--c-dem)";
+
+  const H = v => v / 10000;
+  const steps = [["Demolate", -H(s.sA[1]), COL.a[1]], ["Înlocuite", -H(s.sA[2]), "#f6c26b"],
+                 ["Construcții noi", H(s.sB[1]), COL.b[1]], ["Reconstruite", H(s.sB[2]), COL.b[2]], ["Extinderi", H(s.ext), COL.b[3]]];
+  steps.push(["Alte diferențe de contur", H(s.sb - s.sa) - steps.reduce((a, x) => a + x[1], 0), "#b7c2d0"]);
+  let run = 0; const wData = steps.map(([, v]) => { const a = run; run += v; return [Math.min(a, run), Math.max(a, run)]; });
+  steps.push(["Variație netă", H(s.sb - s.sa), "#0d2a4f"]); wData.push([Math.min(0, run), Math.max(0, run)]);
+  mkChart("chWater", {type: "bar", data: {labels: steps.map(x => x[0]),
+    datasets: [{data: wData, backgroundColor: steps.map(x => x[2]), borderRadius: 4, borderSkipped: false, barPercentage: .7}]},
+    options: {plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => { const v = steps[c.dataIndex][1];
+      return (v >= 0 ? "+" : "−") + nf(Math.abs(v), 2) + " ha"; }}}},
+      scales: {y: {title: {display: true, text: "hectare (față de 2011)"}, ticks: {callback: v => (v > 0 ? "+" : "") + nf(v, 1)}},
+               x: {grid: {display: false}}}}});
+
+  const donut = (id, data, labels, colors) => mkChart(id, {type: "doughnut",
+    data: {labels, datasets: [{data, backgroundColor: colors, borderColor: "#fff", borderWidth: 2}]},
+    options: {cutout: "58%", plugins: {legend: {position: "bottom", labels: {padding: 8}},
+      tooltip: {callbacks: {label: c => { const t = c.dataset.data.reduce((a, b) => a + b, 0) || 1; return `${c.label}: ${fmt(c.raw)} (${nf(c.raw / t * 100, 1)}%)`; }}}}}});
+  donut("chDonB", [1, 2, 3, 4, 0].map(k => s.b[k]), [1, 2, 3, 4, 0].map(k => NAME.b[k]), [1, 2, 3, 4, 0].map(k => COL.b[k]));
+  donut("chDonA", [1, 2, 0].map(k => s.a[k]), [1, 2, 0].map(k => NAME.a[k]), [COL.a[1], "#f6c26b", COL.a[0]]);
+
+  const known = s.la.slice(0, LEV.length).reduce((a, b) => a + b, 0) + s.lb.slice(0, LEV.length).reduce((a, b) => a + b, 0);
+  $("#lvNote").textContent = known ? "Numărul de clădiri după numărul de niveluri, în 2011 și în 2024." +
+    (s.la[LEV.length] + s.lb[LEV.length] ? ` Fără număr de niveluri: ${fmt(s.la[LEV.length])} în 2011, ${fmt(s.lb[LEV.length])} în 2024.` : "")
+    : "Straturile încărcate nu au număr de niveluri; graficul apare când alegi coloana cu niveluri la încărcare.";
+  mkChart("chLev", {type: "bar", data: {labels: LEV.map(x => x[0]),
+    datasets: [{label: "2011", data: s.la.slice(0, LEV.length), backgroundColor: "#9aa8ba", borderRadius: 4},
+               {label: "2024", data: s.lb.slice(0, LEV.length), backgroundColor: "#0d2a4f", borderRadius: 4}]},
+    options: {plugins: {legend: {position: "bottom"}, tooltip: {callbacks: {label: c => `${c.dataset.label}: ${fmt(c.raw)} clădiri`}}},
+              scales: {x: {grid: {display: false}}, y: {beginAtZero: true, ticks: {callback: v => fmt(v)}}}}});
+
+  const rows = cartRows();
+  const zsel = gMode !== "view" ? +gMode : -1;
+  const alpha = (c, i) => zsel < 0 || i === zsel ? c : c + "55";
+  const legend = {position: "bottom", labels: {generateLabels: ch => ch.data.datasets.map((d, i) => ({text: d.label, fillStyle: d.base,
+    strokeStyle: d.base, lineWidth: 0, hidden: !ch.isDatasetVisible(i), datasetIndex: i, fontColor: Chart.defaults.color}))}};
+  const pick = (chart, ev, ax = "y") => { const sc = chart.scales[ax], a = chart.chartArea;
+    if (!sc || ev.x < a.left - 200 || ev.x > a.right || ev.y < a.top || ev.y > a.bottom + 80) return;
+    const k = Math.round(sc.getValueForPixel(ax === "y" ? ev.y : ev.x)), r = chart.$rows && chart.$rows[k];
+    if (r) setTimeout(() => setZona(r.i), 0); };
+  const byNew = [...rows].sort((a, b) => (b.noi - b.dem) - (a.noi - a.dem));
+  const c1 = mkChart("chNewDem", {type: "bar", data: {labels: byNew.map(r => r.nume), datasets: [
+      {label: "Noi", base: COL.b[1], data: byNew.map(r => r.nouaS), backgroundColor: byNew.map(r => alpha(COL.b[1], r.i)), stack: "s"},
+      {label: "Reconstruite", base: COL.b[2], data: byNew.map(r => r.recS), backgroundColor: byNew.map(r => alpha(COL.b[2], r.i)), stack: "s"},
+      {label: "Demolate", base: COL.a[1], data: byNew.map(r => -r.demS), backgroundColor: byNew.map(r => alpha(COL.a[1], r.i)), stack: "s"},
+      {label: "Înlocuite", base: "#f6c26b", data: byNew.map(r => -r.inlS), backgroundColor: byNew.map(r => alpha("#f6c26b", r.i)), stack: "s"}]},
+    options: {indexAxis: "y", onClick: (e, _, ch) => pick(ch, e), onHover: e => e.native.target.style.cursor = "pointer",
+      plugins: {legend, tooltip: {mode: "index", intersect: false, callbacks: {label: c => `${c.dataset.label}: ${fmt(Math.abs(c.raw))}`}}},
+      scales: {x: {stacked: true, ticks: {callback: v => fmt(Math.abs(v))}}, y: {stacked: true, grid: {display: false}, ticks: {autoSkip: false}}}}});
+  if (c1) c1.$rows = byNew;
+
+  const byVar = [...rows].sort((a, b) => b.v - a.v);
+  const c2 = mkChart("chVar", {type: "bar", data: {labels: byVar.map(r => r.nume), datasets: [{label: "Variație", data: byVar.map(r => r.v),
+      backgroundColor: byVar.map(r => alpha(r.v >= 0 ? COL.b[1] : COL.a[1], r.i)), borderRadius: 3}]},
+    options: {indexAxis: "y", onClick: (e, _, ch) => pick(ch, e), onHover: e => e.native.target.style.cursor = "pointer",
+      plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => `${c.raw >= 0 ? "+" : ""}${nf(c.raw, 1)}% (${nf(byVar[c.dataIndex].sa, 1)} → ${nf(byVar[c.dataIndex].sb, 1)} ha)`}}},
+      scales: {x: {ticks: {callback: v => nf(v) + "%"}}, y: {grid: {display: false}, ticks: {autoSkip: false}}}}});
+  if (c2) c2.$rows = byVar;
+
+  const byArea = [...rows].sort((a, b) => b.sb - a.sb);
+  const c3 = mkChart("chArea", {type: "bar", data: {labels: byArea.map(r => r.nume), datasets: [
+      {label: "2011", base: "#9aa8ba", data: byArea.map(r => r.sa), backgroundColor: byArea.map(r => alpha("#9aa8ba", r.i)), borderRadius: 3},
+      {label: "2024", base: "#0d2a4f", data: byArea.map(r => r.sb), backgroundColor: byArea.map(r => alpha("#0d2a4f", r.i)), borderRadius: 3}]},
+    options: {onClick: (e, _, ch) => pick(ch, e, "x"),
+      onHover: e => e.native.target.style.cursor = "pointer",
+      plugins: {legend, tooltip: {mode: "index", intersect: false, callbacks: {label: c => `${c.dataset.label}: ${nf(c.raw, 1)} ha`}}},
+      scales: {x: {grid: {display: false}, ticks: {autoSkip: false, maxRotation: 50, minRotation: 0}}, y: {beginAtZero: true, title: {display: true, text: "hectare"}}}}});
+  if (c3) c3.$rows = byArea;
+}
+$("#gSel").onchange = e => { const v = e.target.value; if (v === "view") { gMode = "view"; renderGrafice(); } else setZona(+v); };
+$("#gToMap").onclick = () => { if (gMode !== "view") setZona(+gMode); };
+
 function useData(d) {
   DATA = d;
+  for (const L of [d.a, d.b]) {
+    const n = L.c.length, x = new Float64Array(n), y = new Float64Array(n);
+    for (let i = 0; i < n; i++) { const r = L.g[i] && L.g[i][0] && L.g[i][0][0]; if (r) { x[i] = r[0] / 1e6; y[i] = r[1] / 1e6; } }
+    XY.set(L, {x, y});
+  }
   GJ.a = toGeoJSON(d.a, "a"); GJ.b = toGeoJSON(d.b, "b");
   for (const [m, side] of [[maps.L, "a"], [maps.R, "b"]]) if (m && m.getSource("cl")) m.getSource("cl").setData(GJ[side]);
   renderStats();
