@@ -107,13 +107,31 @@ def _extra_vectors(extra):
     return _extra_cache[key]
 
 
-def retrieve(question, k=4, extra=None):
+_ext = ([], None)
+
+
+def set_external(items):
+    global _ext
+    items = list(items)
+    _ext = (items, embed([t for _, t in items]) if items else None)
+    return len(items)
+
+
+def external_count():
+    return len(_ext[0])
+
+
+def retrieve(question, k=4, extra=None, external=True):
     q = embed([question])[0]
     pool = list(chunks)
     scores = list(vectors @ q)
     if extra:
         pool += list(extra)
         scores += list(_extra_vectors(extra) @ q)
+    ext_items, ext_vec = _ext
+    if external and ext_vec is not None:
+        pool += ext_items
+        scores += list(ext_vec @ q)
     top = np.argsort(np.array(scores))[::-1][:k]
     return [pool[i] for i in top]
 
@@ -191,9 +209,12 @@ def _ask_ollama(prompt, model):
     return r.json()["message"]["content"]
 
 
-def answer(question, extra=None, db_context=None, provider=None, ollama_model=None):
+def answer(question, extra=None, db_context=None, provider=None, ollama_model=None,
+           external=True, prioritar=None):
     provider = (provider or llm_provider()).lower()
-    found = retrieve(question, extra=extra)
+    prioritar = list(prioritar or [])
+    found = retrieve(question, k=5 if external and external_count() else 4, extra=extra, external=external)
+    found = prioritar + [f for f in found if f not in prioritar]
     if db_context:
         found = [("Baza de date URBIS", db_context)] + found
     if provider == "claude" and not api_key():
@@ -205,7 +226,8 @@ def answer(question, extra=None, db_context=None, provider=None, ollama_model=No
         "Ești asistentul platformei URBIS GIS (densificare urbană, Iași; voucher "
         "UEFISCDI TUIASI). Răspunde în română, concis, doar pe baza contextului. După fiecare "
         "afirmație indică sursa în paranteze drepte, de ex. [IasiStudy.md] sau "
-        "[Baza de date URBIS]. Dacă informația nu e în context, spune clar că nu există "
+        "[Baza de date URBIS]. Pentru sursele publice (registrul MDLPA, urban-gis.ro) dă și "
+        "linkul din context. Dacă informația nu e în context, spune clar că nu există "
         "în datele platformei; nu inventa cifre.\n\n"
         f"Context:\n{context}\n\nÎntrebare: {question}"
     )

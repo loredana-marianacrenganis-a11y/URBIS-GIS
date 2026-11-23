@@ -21,6 +21,7 @@ import osm
 import pagini_rapoarte as PR
 import raport
 import raport_cladire
+import surse_publice
 import swipe
 from common import (rag, read_layer, gpkg_layers, init_session, circle, area_ha,
                     zone_polygon_from_file, show_sources, NAVY)
@@ -132,14 +133,53 @@ def doc_chunks(_ver_docs):
     return out
 
 
+@st.cache_resource(show_spinner=False)
+def surse_publice_stare():
+    import threading
+    return {"stare": "neîncărcate", "etapa": "", "sectiuni": [], "registru": 0, "articole": 0,
+            "timp": None, "erori": {}, "lock": threading.Lock()}
+
+
+def _incarca_surse(s, fortat):
+    try:
+        d = surse_publice.incarca(fortat=fortat, progres=s)
+        items = surse_publice.sectiuni(d)
+        s["etapa"] = "indexare"
+        rag.set_external(items)
+        s.update(stare="gata" if items else "eroare", sectiuni=items, registru=len(d.get("registru") or []),
+                 articole=len(d.get("articole") or []), timp=d.get("timp"), erori=d.get("erori") or {},
+                 reincearca=time.time() + 600)
+        print(f"[surse publice] registru {s['registru']}, articole {s['articole']}, secțiuni {len(items)}, "
+              f"erori {s['erori']}")
+    except Exception as e:
+        s.update(stare="eroare", erori={"general": str(e)[:300]}, reincearca=time.time() + 600)
+        print(f"[surse publice] eroare: {e}")
+
+
+def porneste_surse(fortat=False):
+    import threading
+    s = surse_publice_stare()
+    with s["lock"]:
+        if s["stare"] == "se încarcă" or (s["stare"] == "gata" and not fortat):
+            return s
+        if s["stare"] == "eroare" and not fortat and time.time() < s.get("reincearca", 0):
+            return s
+        s.update(stare="se încarcă", etapa="pornire")
+    threading.Thread(target=_incarca_surse, args=(s, fortat), daemon=True).start()
+    return s
+
+
 def ask_assistant(q):
     t0 = time.time()
     ndocs = int(db.read_sql("SELECT COUNT(*) n FROM document").iloc[0, 0])
+    ext = st.session_state.get("surse_publice", True)
+    pri = surse_publice.potriviri(q, surse_publice_stare()["sectiuni"]) if ext else []
     with st.spinner("Caut în baza de date și în documente..."):
         try:
             text, found = rag.answer(q, extra=doc_chunks(ndocs), db_context=db.db_summary(),
                                      provider=st.session_state.get("llm", rag.llm_provider()),
-                                     ollama_model=st.session_state.get("ollama_model"))
+                                     ollama_model=st.session_state.get("ollama_model"),
+                                     external=ext, prioritar=pri)
         except Exception as e:
             text, found = f"⚠️ Eroare: {e}", []
     log("întrebare asistent", {"intrebare": q[:300], "model": st.session_state.get("llm", rag.llm_provider())}, t0)
@@ -487,8 +527,10 @@ def page_swipe():
 
 
 def page_asistent():
-    header("Asistent GIS", "M5", "Răspunde din baza de date URBIS, documentele încărcate și documentația "
-                                    "tehnică a fluxului FLAIR-HUB2BF, cu sursa citată")
+    header("Asistent GIS", "M5", "Răspunde din baza de date URBIS, documentele încărcate, documentația "
+                                    "tehnică FLAIR-HUB2BF și surse publice (registrul MDLPA, urban-gis.ro), "
+                                    "cu sursa citată")
+    sp = porneste_surse()
     with st.expander("⚙️ Setări și protecția datelor", expanded=False):
         opts = {"claude": "Serviciu online (cheie API)", "gemini": "Serviciu online gratuit (cheie gratuită)", "ollama": "Local – datele nu părăsesc calculatorul"}
         cur = st.session_state.get("llm", rag.llm_provider())
@@ -505,6 +547,27 @@ def page_asistent():
                    f"bazei de date (fără date despre persoane). Documente indexate: "
                    f"{int((nd['date_personale'] == 0).sum()) if len(nd) else 0}; excluse pentru că au date personale: "
                    f"{int((nd['date_personale'] == 1).sum()) if len(nd) else 0}.")
+        st.markdown("**Surse publice**")
+        st.session_state.surse_publice = st.checkbox(
+            "Caută și în registrul MDLPA al documentațiilor de urbanism (PUG/PUZ/PUD, județul Iași) "
+            "și în ghidurile urban-gis.ro", value=st.session_state.get("surse_publice", True))
+        if sp["stare"] == "gata":
+            cand = time.strftime("%d.%m.%Y %H:%M", time.localtime(sp["timp"])) if sp["timp"] else "-"
+            st.caption(f"[Registrul MDLPA]({surse_publice.MDLPA_REGISTRU}): {sp['registru']} documentații · "
+                       f"[urban-gis.ro – Resurse]({surse_publice.URBAN_GIS_RESURSE}): {sp['articole']} articole · "
+                       f"{len(sp['sectiuni'])} secțiuni indexate · actualizat {cand} (se reîmprospătează săptămânal).")
+            for k, v in (sp["erori"] or {}).items():
+                st.caption(f"⚠️ {k}: {v}")
+        elif sp["stare"] == "eroare":
+            st.warning(f"Sursele publice nu au putut fi citite: {sp['erori']}")
+        else:
+            st.caption(f"Sursele publice se încarcă în fundal ({sp['etapa']}); durează 1–2 minute.")
+        if st.button("Actualizează acum sursele publice", disabled=sp["stare"] == "se încarcă"):
+            porneste_surse(fortat=True)
+            st.rerun()
+    if st.session_state.get("surse_publice", True) and sp["stare"] == "se încarcă":
+        st.caption(f"⏳ Sursele publice (registrul MDLPA, urban-gis.ro) se încarcă în fundal ({sp['etapa']}); "
+                   "până atunci asistentul răspunde din celelalte surse.")
     _p = st.session_state.get("llm", rag.llm_provider())
     if (_p == "claude" and not rag.api_key()) or (_p == "gemini" and not rag.gemini_key()):
         st.warning("Asistentul nu are cheie API: răspunsurile se limitează la fragmentele găsite. "
@@ -513,10 +576,12 @@ def page_asistent():
         st.session_state.messages = []
     ex = ["Câte construcții noi au apărut între primul și ultimul an din baza de date?",
           "Ce pași are procesul FLAIR-HUB2BF?", "De ce nu s-au folosit clădirile ANCPI?",
-          "Ce reglementări de urbanism sunt încărcate în platformă?"]
-    cols = st.columns(len(ex))
-    for c, e in zip(cols, ex):
-        if c.button(e, width="stretch"):
+          "Ce reglementări de urbanism sunt încărcate în platformă?",
+          "Ce spune registrul MDLPA despre PUG-ul municipiului Iași?",
+          "Ce analize GIS pot fundamenta deciziile de planificare?"]
+    cols = st.columns(3)
+    for i, e in enumerate(ex):
+        if cols[i % 3].button(e, width="stretch", key=f"ex_{i}"):
             st.session_state.pending = e
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
@@ -998,6 +1063,8 @@ def page_despre():
 - **FLAIR-HUB2BF** – documentația tehnică a fluxului de extragere a clădirilor și straturile RO-IAS (importate de operator).
 - **OpenStreetMap** – construcții, tip, niveluri (© contribuitorii OSM, ODbL).
 - **Documente încărcate** – normative MDLPA, PUG/PUZ, extrase CF, indexate pentru asistent.
+- **Registrul MDLPA al documentațiilor de urbanism** ([datelocale.mdlpa.ro](https://datelocale.mdlpa.ro/ro/planning/registru-pug/)) – PUG/PUZ/PUD din județul Iași: stadiu, HCL de aprobare și prelungire, date spațiale conforme Ordinului 904/2023; citit automat pentru asistent.
+- **urban-gis.ro – Resurse** ([urban-gis.ro/resurse](https://urban-gis.ro/resurse)) – ghiduri despre GIS în urbanism, citite automat pentru asistent, cu linkul articolului.
 - **Estimarea nivelurilor** – model învățat din construcțiile cu niveluri cunoscute; precizia e afișată pe hartă.
 
 #### Limitări
@@ -1102,6 +1169,7 @@ if DEMO:
             st.caption(_demo_state[:300])
             demo_bootstrap.clear()
 
+porneste_surse()
 current_role()
 pages = {
     "Explorează": [st.Page(page_harta, title="Hartă și căutare · M3", icon="🗺️", default=True),

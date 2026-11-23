@@ -1,5 +1,6 @@
 
 import json
+import re
 import tempfile
 import zipfile
 from pathlib import Path
@@ -161,7 +162,8 @@ def study_zone_polygons():
 def show_sources(found):
     with st.expander(f"📄 Secțiunile găsite ({len(found)})"):
         for src, txt in found:
-            st.markdown(f"**{src}**")
+            url = re.search(r"https?://[^\s)\]]+", txt) if src.startswith(("Registrul MDLPA", "urban-gis.ro")) else None
+            st.markdown(f"**{src}**" + (f" · [deschide sursa]({url.group(0)})" if url else ""))
             st.text(txt)
 
 
