@@ -176,24 +176,104 @@ def llm_provider():
 
 
 GEMINI_MODEL = os.environ.get("URBIS_GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_REZERVE = [m.strip() for m in os.environ.get(
+    "URBIS_GEMINI_REZERVE", "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.6-flash").split(",") if m.strip()]
+_pauza_model = {}
+_cache_raspunsuri = {}
+
+
+class ServiciuOcupat(Exception):
+    def __init__(self, tip, asteapta=0, detalii=""):
+        super().__init__(detalii or tip)
+        self.tip, self.asteapta, self.detalii = tip, int(asteapta or 0), detalii
+
+
+def _retry_delay(r, implicit=60):
+    try:
+        for d in r.json().get("error", {}).get("details", []):
+            v = str(d.get("retryDelay", ""))
+            if v.endswith("s"):
+                return max(5, int(float(v[:-1])) + 1)
+    except Exception:
+        pass
+    try:
+        return max(5, int(r.headers.get("Retry-After", implicit)))
+    except Exception:
+        return implicit
 
 
 def _ask_gemini(prompt):
     import time
     import requests
-    for pauza in (2, 5, 0):
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
-            headers={"x-goog-api-key": gemini_key(), "Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}],
-                  "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800}},
-            timeout=60)
-        if r.status_code not in (429, 500, 502, 503, 504) or not pauza:
+    if prompt in _cache_raspunsuri:
+        return _cache_raspunsuri[prompt]
+    modele = [GEMINI_MODEL] + [m for m in GEMINI_REZERVE if m != GEMINI_MODEL]
+    acum = time.time()
+    disponibile = [m for m in modele if _pauza_model.get(m, 0) <= acum]
+    if not disponibile:
+        raise ServiciuOcupat("limita", min(_pauza_model[m] for m in modele) - acum)
+    tip, asteapta, detalii = "indisponibil", 30, ""
+    for m in disponibile:
+        for incercare in range(2):
+            try:
+                r = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent",
+                    headers={"x-goog-api-key": gemini_key(), "Content-Type": "application/json"},
+                    json={"contents": [{"parts": [{"text": prompt}]}],
+                          "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800}},
+                    timeout=60)
+            except requests.RequestException as e:
+                detalii = str(e)[:200]
+                break
+            if r.status_code == 200:
+                try:
+                    parts = r.json()["candidates"][0]["content"]["parts"]
+                    text = "".join(p.get("text", "") for p in parts).strip()
+                except Exception:
+                    text = ""
+                if text:
+                    if len(_cache_raspunsuri) > 300:
+                        _cache_raspunsuri.clear()
+                    _cache_raspunsuri[prompt] = text
+                    return text
+                detalii = "răspuns gol"
+                break
+            if r.status_code in (401, 403):
+                raise ServiciuOcupat("cheie", 0, f"HTTP {r.status_code}")
+            if r.status_code == 429:
+                w = _retry_delay(r)
+                _pauza_model[m] = time.time() + w
+                tip, asteapta, detalii = "limita", w, f"{m}: HTTP 429"
+                break
+            if r.status_code in (500, 502, 503, 504) and incercare == 0:
+                time.sleep(1.5)
+                continue
+            if r.status_code in (500, 502, 503, 504):
+                _pauza_model[m] = time.time() + 20
+            detalii = f"{m}: HTTP {r.status_code}"
             break
-        time.sleep(pauza)
-    r.raise_for_status()
-    parts = r.json()["candidates"][0]["content"]["parts"]
-    return "".join(p.get("text", "") for p in parts)
+    if tip == "limita":
+        rest = [_pauza_model.get(m, 0) - time.time() for m in modele]
+        asteapta = max(5, min(x for x in rest if x > 0)) if any(x > 0 for x in rest) else asteapta
+    raise ServiciuOcupat(tip, asteapta, detalii)
+
+
+def raspuns_fara_model(found, limita=4):
+    rand = []
+    for src, txt in found[:limita]:
+        t = " ".join(re.sub(r"#+\s*|\*\*", "", str(txt)).split())
+        rand.append(f"- **{src}**: {t[:420]}{'…' if len(t) > 420 else ''}")
+    return "\n".join(rand)
+
+
+def mesaj_serviciu(e):
+    if e.tip == "cheie":
+        return "⚠️ Cheia pentru serviciul online nu este acceptată (verifică GEMINI_API_KEY în Secrets)."
+    if e.tip == "limita":
+        m = max(1, round(e.asteapta / 60))
+        return (f"⏳ Serviciul online gratuit a atins limita de întrebări; se poate reîncerca în circa "
+                f"{m} {'minut' if m == 1 else 'minute'}. Dacă limita zilnică s-a epuizat, se resetează a doua zi.")
+    return "⏳ Serviciul online este momentan supraîncărcat (eroare temporară); reîncearcă peste câteva momente."
 
 
 def ollama_models():
@@ -242,8 +322,11 @@ def answer(question, extra=None, db_context=None, provider=None, ollama_model=No
                     "Mai jos vezi totuși secțiunile găsite în documente."), found
         try:
             return _ask_gemini(prompt), found
+        except ServiciuOcupat as e:
+            return (mesaj_serviciu(e) + "\n\nPână atunci, iată ce am găsit, fără formulare automată:\n\n"
+                    + raspuns_fara_model(found)), found
         except Exception as e:
-            return f"⚠️ Serviciul online nu a răspuns: {e}", found
+            return f"⚠️ Serviciul online nu a răspuns: {str(e)[:200]}", found
     if provider == "ollama":
         model = ollama_model or os.environ.get("URBIS_OLLAMA_MODEL", "llama3.1")
         try:

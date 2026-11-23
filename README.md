@@ -8,7 +8,7 @@ cadastral și analiză urbană sustenabilă”, contract 29CI/2026, cod PN-IV-P7
 |---|---|---|
 | M1 Bază de date spațio-temporală | Model de date (ERD, schema PostGIS, statistici) | WP1 |
 | M2 Import și validare | Import și validare (construcții, parcele, zone, documente) | WP2 |
-| M3 Hartă Web-GIS | Hartă și căutare (cursor de timp, 3 tematici, fișă, istoric) · Harta înălțimilor (OSM) · Comparație cu swipe (imagini satelitare 2014–prezent, clădiri pe ani) | WP4 |
+| M3 Hartă Web-GIS | Hartă și căutare (cursor de timp, tematici înălțimi și densificare, fișă, istoric) · Harta înălțimilor (OSM) · Comparație cu swipe (imagini satelitare 2014–prezent, clădiri pe ani) | WP4 |
 | M4 Interogare spațială | Interogare spațială (filtre, zonă, export CSV/GeoJSON) | WP4 |
 | M5 Asistent GIS | Asistent (baza de date + documente fără date personale + documentația FLAIR-HUB2BF, cu surse) + surse publice: registrul MDLPA al documentațiilor de urbanism (PUG/PUZ/PUD, județul Iași) și ghidurile urban-gis.ro · Documentare web (articole OpenAlex și presă locală, cu sinteză și surse) | WP3 |
 | M6 Indicatori și rapoarte | Tablou de bord (grafice pe ani și cartiere) · Indicatori densificare (POT, CUT, noi/demolate, tipuri de schimbări: fuziune, divizare, recompunere) · Rapoarte PDF · Neconcordanțe cadastrale | WP4 |
@@ -48,6 +48,10 @@ de date, dar nu intră în indexul asistentului. Asistentul primește doar fragm
 ## Configurare
 - Cheia pentru asistent: în Secrets pe Streamlit Cloud (local: variabile de mediu sau `cheie_api.txt`);
   numele variabilelor sunt în `rag_iasi.py`. Asistentul poate rula și local, fără cheie.
+- Cu cheia gratuită, serviciul online are o limită de întrebări pe minut și pe zi; când limita e atinsă,
+  platforma încearcă automat alte variante ale serviciului, iar dacă toate sunt ocupate afișează fragmentele găsite.
+- Documentare web (opțional): `OPENALEX_API_KEY` (cheie gratuită, openalex.org) mărește limita de căutări;
+  fără ea, la limită, articolele se caută automat în Crossref.
 - Parolă pentru rolurile Operator/Administrator (opțional): variabila `URBIS_PAROLA` sau în Secrets.
 - Pe găzduirea gratuită Streamlit Cloud, fișierul `urbis.sqlite` nu e permanent: pentru producție,
   folosiți serverul TUIASI cu PostgreSQL + PostGIS (`schema_postgis.sql`).

@@ -1,4 +1,5 @@
 
+import os
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -20,12 +21,16 @@ def _abstract(inv):
     return " ".join(w for _, w in pos)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def articole(query, n=8, de_la=2015):
-    r = requests.get("https://api.openalex.org/works", headers=UA, timeout=30, params={
-        "search": query, "per-page": n, "sort": "relevance_score:desc",
-        "filter": f"from_publication_date:{de_la}-01-01",
-        "select": "title,publication_year,doi,id,primary_location,authorships,abstract_inverted_index"})
+def _openalex(query, n, de_la):
+    params = {"search": query, "per-page": n, "sort": "relevance_score:desc",
+              "filter": f"from_publication_date:{de_la}-01-01",
+              "select": "title,publication_year,doi,id,primary_location,authorships,abstract_inverted_index"}
+    cheie = os.environ.get("OPENALEX_API_KEY", "").strip()
+    if cheie:
+        params["api_key"] = cheie
+    r = requests.get("https://api.openalex.org/works", headers=UA, timeout=30, params=params)
+    if r.status_code == 429:
+        raise RuntimeError("OpenAlex a atins limita zilnică de cereri gratuite")
     r.raise_for_status()
     out = []
     for w in r.json().get("results", []):
@@ -35,6 +40,33 @@ def articole(query, n=8, de_la=2015):
                     "sursa": src, "autori": aut, "url": w.get("doi") or w.get("id"),
                     "text": _abstract(w.get("abstract_inverted_index"))[:900]})
     return out
+
+
+def _crossref(query, n, de_la):
+    r = requests.get("https://api.crossref.org/works", headers=UA, timeout=30, params={
+        "query.bibliographic": query, "rows": n, "sort": "relevance",
+        "filter": f"from-pub-date:{de_la}-01-01,type:journal-article",
+        "select": "title,issued,DOI,container-title,author,abstract"})
+    r.raise_for_status()
+    out = []
+    for w in r.json().get("message", {}).get("items", []):
+        an = ((w.get("issued") or {}).get("date-parts") or [[None]])[0][0]
+        aut = ", ".join(" ".join(x for x in [a.get("given"), a.get("family")] if x) for a in (w.get("author") or [])[:3])
+        rez = re.sub(r"<[^>]+>", " ", w.get("abstract") or "")
+        out.append({"tip": "articol", "titlu": " ".join(w.get("title") or []), "an": an,
+                    "sursa": " ".join(w.get("container-title") or []), "autori": aut,
+                    "url": f"https://doi.org/{w['DOI']}" if w.get("DOI") else "",
+                    "text": " ".join(rez.split())[:900]})
+    return [x for x in out if x["titlu"]]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def articole(query, n=8, de_la=2015):
+    try:
+        return _openalex(query, n, de_la), None
+    except Exception as e:
+        motiv = str(e)[:160]
+    return _crossref(query, n, de_la), motiv
 
 
 def _gdelt(query, n, luni):
@@ -139,16 +171,36 @@ def _llm(prompt, provider, ollama_model=None):
     return None
 
 
-def _cuvinte_en(intrebare, provider, ollama_model, zona=""):
-    try:
-        t = _llm("Give 3-6 English search keywords (no quotes, space separated, nothing else) for "
-                 f"finding scientific papers about: {intrebare}", provider, ollama_model)
-        if t:
-            return re.sub(r"[\"'\n]", " ", t).strip()[:120]
-    except Exception:
-        pass
-    z = (zona or "").translate(str.maketrans("ăâîșşțţĂÂÎȘŞȚŢ", "aaisstt" + "AAISSTT"))
-    return f"urban densification building footprints cadastre {z}".strip()
+CUVINTE_EN = {
+    "densificare": "densification", "densificarea": "densification", "construcții": "buildings",
+    "constructii": "buildings", "clădiri": "buildings", "cladiri": "buildings", "noi": "new",
+    "demolare": "demolition", "demolări": "demolition", "demolari": "demolition", "demolate": "demolition",
+    "reconstrucție": "reconstruction", "reconstructie": "reconstruction", "cadastru": "cadastre",
+    "cadastral": "cadastral", "urban": "urban", "urbană": "urban", "urbana": "urban", "urbanism": "urban planning",
+    "extindere": "urban sprawl", "locuințe": "housing", "locuinte": "housing", "blocuri": "apartment blocks",
+    "mansarde": "attic extensions", "ortofotoplanuri": "orthophotos", "imagini": "imagery",
+    "satelitare": "satellite", "teledetecție": "remote sensing", "amprente": "footprints",
+    "înălțime": "building height", "inaltime": "building height", "niveluri": "building height",
+    "schimbări": "change detection", "schimbari": "change detection", "evoluție": "change", "evolutie": "change",
+    "periurban": "peri-urban", "suburbanizare": "suburbanization", "verde": "green space",
+}
+
+
+def _cuvinte_en(intrebare, provider=None, ollama_model=None, zona=""):
+    tr = str.maketrans("ăâîșşțţĂÂÎȘŞȚŢ", "aaisstt" + "AAISSTT")
+    cuv = []
+    for w in re.findall(r"[\wăâîșşțţĂÂÎȘŞȚŢ-]+", intrebare.lower()):
+        en = CUVINTE_EN.get(w) or CUVINTE_EN.get(w.translate(tr))
+        if en and en not in cuv:
+            cuv.append(en)
+    z = (zona or "").translate(tr).strip()
+    if not cuv:
+        cuv = ["urban densification", "building footprints"]
+    if z and z.lower() not in " ".join(cuv).lower():
+        cuv.append(z)
+    if "romania" not in " ".join(cuv).lower():
+        cuv.append("Romania")
+    return " ".join(cuv)[:120]
 
 
 def sinteza(intrebare, rezultate, provider, ollama_model=None):
@@ -198,11 +250,15 @@ def render(header):
     rez, erori = [], []
     with st.spinner("Caut în surse publice…"):
         if "Articole științifice" in surse:
-            en = _cuvinte_en(intrebare, provider, st.session_state.get("ollama_model"), zona)
+            en = _cuvinte_en(intrebare, zona=zona)
             try:
-                rez += articole(en, de_la=int(de_la))
+                art, motiv = articole(en, de_la=int(de_la))
+                rez += art
+                if motiv:
+                    st.caption(f"Articolele vin din Crossref, pentru că {motiv[0].lower() + motiv[1:]}. "
+                               "Cu o cheie gratuită OpenAlex (OPENALEX_API_KEY în Secrets) limita crește.")
             except Exception as e:
-                erori.append(f"OpenAlex: {e}")
+                erori.append(f"articole științifice: {str(e)[:160]}")
         if "Presă" in surse:
             try:
                 pq = " ".join(w for w in re.findall(r"\w+", intrebare) if len(w) > 3)[:100]
@@ -216,8 +272,10 @@ def render(header):
         return
     try:
         text = sinteza(intrebare, rez, provider, st.session_state.get("ollama_model"))
+    except rag.ServiciuOcupat as e:
+        text, _ = None, st.info(rag.mesaj_serviciu(e) + " Mai jos este lista surselor găsite.")
     except Exception as e:
-        text, _ = None, st.warning(f"Sinteza automată nu a reușit: {e}")
+        text, _ = None, st.warning(f"Sinteza automată nu a reușit: {str(e)[:200]}")
     if text:
         st.markdown("#### Sinteză")
         st.markdown(text)

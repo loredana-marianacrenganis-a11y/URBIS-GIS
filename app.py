@@ -269,8 +269,10 @@ def page_harta():
     ver = db_version()
     c1, c2, c3 = st.columns([1.3, 1.6, 1.2])
     q = c1.text_input("Caută", placeholder="Nr. cadastral, nr. CF sau adresă", key="h_q")
-    theme = c2.radio("Tematică", ["Înălțimi (niveluri)", "Densificare între ani", "POT pe zone"],
-                     horizontal=True, key="h_theme")
+    teme = ["Înălțimi (niveluri)", "Densificare între ani"]
+    if st.session_state.get("h_theme") not in teme:
+        st.session_state.pop("h_theme", None)
+    theme = c2.radio("Tematică", teme, horizontal=True, key="h_theme")
     view3d = c3.toggle("Vedere 3D", key="h_3d")
     if len(ys) > 1:
         y1, y2 = st.select_slider("Perioada / data hărții", options=ys, value=(ys[0], ys[-1]), key="h_years")
@@ -324,17 +326,6 @@ def page_harta():
                   for t, n, s, a in zip(g["tip"], g["niv_afis"], g["niv_sursa_afis"], g["amprenta_m2"])]
         data = deck_rows(g4, cols, labels)
         legend = None
-        if theme.startswith("POT"):
-            units = pot_by_unit(g, aggregation_units(g.total_bounds)).to_crs(4326)
-            units = units[units["cladiri"] > 0]
-            urows = [{"polygon": [list(c) for c in u.geometry.exterior.coords] if u.geometry.geom_type == "Polygon"
-                      else [list(c) for c in max(u.geometry.geoms, key=lambda p: p.area).exterior.coords],
-                      "color": pot_rgb(u.pot), "info": f"{u.unitate}: POT {u.pot:.1f}%, CUT {u.cut:.2f}",
-                      "cod": ""} for u in units.itertuples()]
-            layers.append(pdk.Layer("PolygonLayer", urows, id="zone", get_polygon="polygon",
-                                    get_fill_color="color", get_line_color=[90, 60, 30], line_width_min_pixels=1,
-                                    pickable=True))
-            data = [dict(r, color=[60, 60, 60, 60]) for r in data]
     if view3d:
         lv = list(g["niv_afis"]) if not theme.startswith("Densificare") or y1 == y2 else \
             [float(n) if pd.notna(n) else 1.0 for n in cmp["niveluri"]]
@@ -599,7 +590,6 @@ def page_asistent():
                 show_sources(msg["found"])
     q = st.chat_input("Scrie o întrebare…") or st.session_state.pop("pending", None)
     if q:
-        st.session_state.messages.append({"role": "user", "content": q})
         with st.chat_message("user"):
             st.markdown(q)
         with st.chat_message("assistant"):
@@ -607,7 +597,8 @@ def page_asistent():
             st.markdown(text)
             if found:
                 show_sources(found)
-        st.session_state.messages.append({"role": "assistant", "content": text, "found": found})
+        st.session_state.messages += [{"role": "user", "content": q},
+                                      {"role": "assistant", "content": text, "found": found}]
 
 
 def page_indicatori():
@@ -1097,7 +1088,12 @@ def demo_progres():
 def _demo_rest(tiles, sid, prog):
     from concurrent.futures import ThreadPoolExecutor, as_completed
     rest = list(tiles)
-    for _ in range(2):
+    for runda in range(10):
+        if runda >= 2:
+            pauza = min(900, 180 * (runda - 1))
+            prog.update(lipsa=len(rest), urmatoarea=time.time() + pauza)
+            time.sleep(pauza)
+            prog["urmatoarea"] = None
         esuate = []
         with ThreadPoolExecutor(max_workers=2) as ex:
             fut = {ex.submit(osm.fetch_buildings, box(*t)): t for t in rest}
@@ -1117,7 +1113,7 @@ def _demo_rest(tiles, sid, prog):
         rest = esuate
         if not rest:
             break
-    prog.update(terminat=True, lipsa=len(rest))
+    prog.update(terminat=True, lipsa=len(rest), urmatoarea=None)
     db.log("demo: inventar OSM (fundal)", "sistem", {"cladiri": prog["cladiri"], "bucati_lipsa": len(rest)})
 
 
@@ -1154,8 +1150,14 @@ if DEMO:
         _prog = demo_progres()
         if _prog["total"] and not _prog["terminat"]:
             _n = f"{_prog['cladiri']:,}".replace(",", ".")
-            st.caption(f"Se încarcă municipiul în fundal din OpenStreetMap: {_prog['gata']}/{_prog['total']} bucăți, "
-                       f"{_n} clădiri până acum. Reîmprospătează pagina peste câteva minute.")
+            if _prog.get("urmatoarea"):
+                _m = max(1, round((_prog["urmatoarea"] - time.time()) / 60))
+                st.caption(f"Încă lipsesc {_prog['lipsa']} din {_prog['total']} bucăți ale municipiului "
+                           f"({_n} clădiri încărcate): serverele OpenStreetMap sunt aglomerate. "
+                           f"Următoarea încercare automată în circa {_m} min.")
+            else:
+                st.caption(f"Se încarcă municipiul în fundal din OpenStreetMap: {_prog['gata']}/{_prog['total']} "
+                           f"bucăți, {_n} clădiri până acum. Reîmprospătează pagina peste câteva minute.")
         elif _prog["lipsa"]:
             st.caption(f"{_prog['lipsa']} din {_prog['total']} bucăți ale municipiului nu s-au putut descărca "
                        "din OpenStreetMap; repornirea aplicației le reîncearcă.")
